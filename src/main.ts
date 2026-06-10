@@ -12,6 +12,7 @@ try {
 } catch (e) {
     console.error('[PIXI] Failed to install unsafe-eval patch:', e);
 }
+const CLOUD_STORAGE_BASE = 'https://7072-prod-d5gnecgcl8574e82a-1441836262.tcb.qcloud.la/';
 import { LevelGenerator, TileData } from './core/LevelGenerator';
 
 function getTodayString() {
@@ -70,7 +71,7 @@ let clickAudioBuffer: any = null;
 if (typeof wx !== 'undefined') {
     if (wx.createInnerAudioContext) {
         bgmAudio = wx.createInnerAudioContext();
-        bgmAudio.src = 'assets/bgm_new.mp3';
+        bgmAudio.src = `${CLOUD_STORAGE_BASE}assets/bgm_new.mp3`;
         bgmAudio.loop = true;
         bgmAudio.volume = 0.5;
 
@@ -87,17 +88,31 @@ if (typeof wx !== 'undefined') {
         webAudioCtx = wx.createWebAudioContext();
         const fs = wx.getFileSystemManager();
 
-        fs.readFile({
-            filePath: 'assets/clear.wav',
-            success: (res: any) => {
-                webAudioCtx.decodeAudioData(res.data, (buffer: any) => clearAudioBuffer = buffer, (err: any) => console.error(err));
+        wx.downloadFile({
+            url: `${CLOUD_STORAGE_BASE}assets/clear.wav`,
+            success: (dlRes: any) => {
+                if (dlRes.statusCode === 200) {
+                    fs.readFile({
+                        filePath: dlRes.tempFilePath,
+                        success: (res: any) => {
+                            webAudioCtx.decodeAudioData(res.data, (buffer: any) => clearAudioBuffer = buffer, (err: any) => console.error(err));
+                        }
+                    });
+                }
             }
         });
 
-        fs.readFile({
-            filePath: 'assets/click.wav',
-            success: (res: any) => {
-                webAudioCtx.decodeAudioData(res.data, (buffer: any) => clickAudioBuffer = buffer, (err: any) => console.error(err));
+        wx.downloadFile({
+            url: `${CLOUD_STORAGE_BASE}assets/click.wav`,
+            success: (dlRes: any) => {
+                if (dlRes.statusCode === 200) {
+                    fs.readFile({
+                        filePath: dlRes.tempFilePath,
+                        success: (res: any) => {
+                            webAudioCtx.decodeAudioData(res.data, (buffer: any) => clickAudioBuffer = buffer, (err: any) => console.error(err));
+                        }
+                    });
+                }
             }
         });
     }
@@ -262,33 +277,33 @@ function savePlayerData() {
     }
 }
 
-const fruitBase = PIXI.BaseTexture.from('assets/sprite_fruits.png');
+const fruitBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_fruits.png');
 fruitBase.setSize(512, 512);
-const catBase = PIXI.BaseTexture.from('assets/sprite_cats.png');
+const catBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_cats.png');
 catBase.setSize(512, 512);
-const dessertBase = PIXI.BaseTexture.from('assets/sprite_desserts.png');
+const dessertBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_desserts.png');
 dessertBase.setSize(512, 512);
 
-const fruitBase2 = PIXI.BaseTexture.from('assets/sprite_fruits_2.png');
+const fruitBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_fruits_2.png');
 fruitBase2.setSize(512, 512);
-const catBase2 = PIXI.BaseTexture.from('assets/sprite_cats_2.png');
+const catBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_cats_2.png');
 catBase2.setSize(512, 512);
-const dessertBase2 = PIXI.BaseTexture.from('assets/sprite_desserts_2.png');
+const dessertBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_desserts_2.png');
 dessertBase2.setSize(512, 512);
 
-const oceanBase = PIXI.BaseTexture.from('assets/sprite_ocean.png');
+const oceanBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_ocean.png');
 oceanBase.setSize(512, 512);
-const oceanBase2 = PIXI.BaseTexture.from('assets/sprite_ocean_2.png');
+const oceanBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_ocean_2.png');
 oceanBase2.setSize(512, 512);
 
-const carBase = PIXI.BaseTexture.from('assets/sprite_cars.png');
+const carBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_cars.png');
 carBase.setSize(512, 512);
-const carBase2 = PIXI.BaseTexture.from('assets/sprite_cars_2.png');
+const carBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_cars_2.png');
 carBase2.setSize(512, 512);
 
-const animalBase = PIXI.BaseTexture.from('assets/sprite_animals.png');
+const animalBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_animals.png');
 animalBase.setSize(512, 512);
-const animalBase2 = PIXI.BaseTexture.from('assets/sprite_animals_2.png');
+const animalBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_animals_2.png');
 animalBase2.setSize(512, 512);
 
 function extractGridTextures(baseTex: PIXI.BaseTexture): PIXI.Texture[] {
@@ -359,15 +374,15 @@ const SHOP_ITEMS = {
 } as any;
 
 // ================= 背景 =================
-const homeBgTexture = PIXI.Texture.from('assets/bg.png');
+const homeBgTexture = PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/bg.png');
 const themeTextures = [
-    PIXI.Texture.from('assets/game_board_bg.png'),        // 清新草地
-    PIXI.Texture.from('assets/game_board_bg_beach.png'),  // 阳光沙滩
-    PIXI.Texture.from('assets/game_board_bg_autumn.png'), // 秋日森林
-    PIXI.Texture.from('assets/game_board_bg_night.png'),  // 魔法星空
-    PIXI.Texture.from('assets/game_board_bg_snow.png'),   // 凛冬雪山
-    PIXI.Texture.from('assets/game_board_bg_solid_green.png'), // 护眼静绿
-    PIXI.Texture.from('assets/game_board_bg_solid_blue.png')   // 清爽浅蓝
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg.png'),        // 清新草地
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_beach.png'),  // 阳光沙滩
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_autumn.png'), // 秋日森林
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_night.png'),  // 魔法星空
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_snow.png'),   // 凛冬雪山
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_solid_green.png'), // 护眼静绿
+    PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/game_board_bg_solid_blue.png')   // 清爽浅蓝
 ];
 const bgSprite = new PIXI.Sprite(homeBgTexture);
 const scale = Math.max(screenWidth / 1024, screenHeight / 1024);
@@ -2738,12 +2753,12 @@ function loadLevel(level: number) {
 }
 
 const tileSkinTextures: Record<string, PIXI.Texture> = {
-    'default': PIXI.Texture.from('assets/tile_default_v7.png'),
-    'mahjong': PIXI.Texture.from('assets/tile_mahjong_v7.png'),
-    'jelly': PIXI.Texture.from('assets/tile_jelly_v7.png'),
-    'wood': PIXI.Texture.from('assets/tile_wood_v7.png'),
-    'metal': PIXI.Texture.from('assets/tile_metal_v7.png'),
-    'biscuit': PIXI.Texture.from('assets/tile_biscuit_v7.png')
+    'default': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_default_v7.png'),
+    'mahjong': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_mahjong_v7.png'),
+    'jelly': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_jelly_v7.png'),
+    'wood': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_wood_v7.png'),
+    'metal': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_metal_v7.png'),
+    'biscuit': PIXI.Texture.from(CLOUD_STORAGE_BASE + 'assets/tile_biscuit_v7.png')
 };
 
 function drawTileBg(bg: PIXI.Sprite, tileId: string) {
