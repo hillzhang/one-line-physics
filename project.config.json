@@ -1,0 +1,91 @@
+{
+    "miniprogramRoot": "./",
+    "projectname": "one-line-physics",
+    "description": "One Line Physics WeChat Mini Game",
+    "appid": "wx24779acf1efb0a66",
+    "setting": {
+        "urlCheck": true,
+        "es6": false,
+        "enhance": false,
+        "postcss": false,
+        "preloadBackgroundData": false,
+        "minified": true,
+        "newFeature": true,
+        "coverView": true,
+        "nodeModules": false,
+        "autoAudits": false,
+        "showShadowRootInWxmlPanel": true,
+        "scopeDataCheck": false,
+        "uglifyFileName": false,
+        "checkInvalidKey": true,
+        "checkSiteMap": true,
+        "uploadWithSourceMap": true,
+        "compileHotReLoad": false,
+        "babelSetting": {
+            "ignore": [],
+            "disablePlugins": [],
+            "outputPath": ""
+        },
+        "bundle": false,
+        "useIsolateContext": true,
+        "useCompilerModule": false,
+        "userConfirmedUseCompilerModuleSwitch": false,
+        "userConfirmedBundleSwitch": false,
+        "packNpmManually": false,
+        "packNpmRelationList": [],
+        "minifyWXSS": true,
+        "disableUseStrict": false,
+        "minifyWXML": true,
+        "useCompilerPlugins": [],
+        "ignoreUploadUnusedFiles": true,
+        "compileWorklet": false,
+        "localPlugins": false,
+        "condition": false,
+        "swc": false,
+        "disableSWC": true
+    },
+    "compileType": "game",
+    "libVersion": "3.1.5",
+    "packOptions": {
+        "ignore": [
+            {
+                "value": "src",
+                "type": "folder"
+            },
+            {
+                "value": "docs",
+                "type": "folder"
+            },
+            {
+                "value": "tsconfig.json",
+                "type": "file"
+            },
+            {
+                "value": "vite.config.ts",
+                "type": "file"
+            },
+            {
+                "value": "node_modules",
+                "type": "folder"
+            }
+        ],
+        "include": []
+    },
+    "condition": {
+        "search": {
+            "list": []
+        },
+        "conversation": {
+            "list": []
+        },
+        "game": {
+            "list": []
+        },
+        "miniprogram": {
+            "list": []
+        }
+    },
+    "simulatorPluginLibVersion": {},
+    "isGameTourist": false,
+    "editorSetting": {}
+}

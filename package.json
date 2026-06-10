@@ -1,0 +1,22 @@
+{
+  "name": "one-line-physics",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build"
+  },
+  "dependencies": {
+    "@pixi/unsafe-eval": "^6.5.10",
+    "@tweenjs/tween.js": "^25.0.0",
+    "canvas": "^3.2.3",
+    "pixi.js": "^6.5.9",
+    "pixi.js-legacy": "^6.5.9"
+  },
+  "devDependencies": {
+    "minigame-api-typings": "latest",
+    "terser": "^5.27.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.0"
+  }
+}
