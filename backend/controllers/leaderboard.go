@@ -38,13 +38,13 @@ func SubmitScore(db *gorm.DB) gin.HandlerFunc {
 			result := db.Where("openid = ? AND mode = ?", openID, req.Mode).First(&existingRecord)
 			
 			if result.Error == nil {
-				// 记录存在，只有当新分数更高时才更新
+				// 记录存在，更新昵称和头像，只有当新分数更高时才更新分数
+				existingRecord.Nickname = req.Nickname
+				existingRecord.AvatarUrl = req.AvatarUrl
 				if req.Score > existingRecord.Score {
 					existingRecord.Score = req.Score
-					existingRecord.Nickname = req.Nickname
-					existingRecord.AvatarUrl = req.AvatarUrl
-					db.Save(&existingRecord)
 				}
+				db.Save(&existingRecord)
 			} else {
 				// 记录不存在，创建新记录
 				record := models.Leaderboard{

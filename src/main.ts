@@ -270,12 +270,23 @@ if (typeof wx !== 'undefined' && wx.cloud) {
                     playerData.level = cloudData.level || 1;
                     playerData.coins = cloudData.coins || 0;
                     
-                    if (cloudData.unlocked) {
+                    if (cloudData.unlocked && cloudData.unlocked.trim() !== '') {
                         try {
                             const unl = JSON.parse(cloudData.unlocked);
                             playerData.unlocked = { ...playerData.unlocked, ...unl };
                         } catch(e) {}
                     }
+                    if (cloudData.props && cloudData.props.trim() !== '') {
+                        try { playerData.props = { ...playerData.props, ...JSON.parse(cloudData.props) }; } catch(e) {}
+                    }
+                    if (cloudData.equipped && cloudData.equipped.trim() !== '') {
+                        try { playerData.equipped = { ...playerData.equipped, ...JSON.parse(cloudData.equipped) }; } catch(e) {}
+                    }
+                    if (cloudData.settings && cloudData.settings.trim() !== '') {
+                        try { playerData.settings = { ...playerData.settings, ...JSON.parse(cloudData.settings) }; } catch(e) {}
+                    }
+                    if (cloudData.checkInDate) playerData.checkInDate = cloudData.checkInDate;
+                    if (cloudData.checkInStreak !== undefined) playerData.checkInStreak = cloudData.checkInStreak;
                     
                     // 保存到本地并更新UI
                     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
@@ -324,7 +335,12 @@ function savePlayerData() {
             data: {
                 coins: playerData.coins,
                 level: playerData.level,
-                unlocked: JSON.stringify(playerData.unlocked)
+                unlocked: JSON.stringify(playerData.unlocked),
+                props: JSON.stringify(playerData.props),
+                equipped: JSON.stringify(playerData.equipped),
+                settings: JSON.stringify(playerData.settings),
+                checkInDate: playerData.checkInDate,
+                checkInStreak: playerData.checkInStreak
             },
             success: (res: any) => {
                 if (res.statusCode !== 200) {

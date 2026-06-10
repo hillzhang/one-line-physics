@@ -8,12 +8,14 @@ type User struct {
 	OpenID       string    `gorm:"primaryKey;column:openid;type:varchar(100)" json:"openid"`
 	Coins        int       `gorm:"column:coins;default:0" json:"coins"`
 	Level        int       `gorm:"column:level;default:1" json:"level"`
-	PropsJSON    string    `gorm:"column:props_json;type:text" json:"props"`
-	UnlockedJSON string    `gorm:"column:unlocked_json;type:text" json:"unlocked"`
-	EquippedJSON string    `gorm:"column:equipped_json;type:text" json:"equipped"`
-	SettingsJSON string    `gorm:"column:settings_json;type:text" json:"settings"`
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	PropsJSON     string    `gorm:"column:props_json;type:text" json:"props"`
+	UnlockedJSON  string    `gorm:"column:unlocked_json;type:text" json:"unlocked"`
+	EquippedJSON  string    `gorm:"column:equipped_json;type:text" json:"equipped"`
+	SettingsJSON  string    `gorm:"column:settings_json;type:text" json:"settings"`
+	CheckInDate   string    `gorm:"column:check_in_date;type:varchar(50)" json:"checkInDate"`
+	CheckInStreak int       `gorm:"column:check_in_streak;default:0" json:"checkInStreak"`
+	CreatedAt     time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 type Leaderboard struct {

@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `unlocked_json` text COMMENT '已解锁的皮肤(存入JSON字符串)',
   `equipped_json` text COMMENT '当前装备的皮肤(存入JSON字符串)',
   `settings_json` text COMMENT '玩家个人设置(音效震动等)',
+  `check_in_date` varchar(50) DEFAULT NULL COMMENT '最后签到日期(YYYY-MM-DD)',
+  `check_in_streak` int DEFAULT 0 COMMENT '连续签到天数',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`openid`)
