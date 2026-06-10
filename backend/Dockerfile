@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS builder
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
@@ -25,8 +25,7 @@ WORKDIR /app
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/server .
-# Copy static files if any
-COPY --from=builder /app/static ./static
+
 
 # Expose port (WeChat Cloud Run usually uses 80)
 EXPOSE 80

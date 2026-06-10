@@ -38,7 +38,7 @@ func main() {
 	r := gin.Default()
 
 	// 提供静态文件访问服务（可选：把图片放在后端的 static 文件夹下）
-	r.Static("/static", "./static")
+
 
 	// 心跳检测接口，微信云托管健康检查使用
 	r.GET("/ping", func(c *gin.Context) {
