@@ -253,6 +253,36 @@ try {
     }
 } catch (e) { }
 
+if (typeof wx !== 'undefined' && wx.cloud) {
+    wx.cloud.init({ env: 'prod-d5gnecgcl8574e82a', traceUser: true });
+    
+    // 异步拉取云端存档
+    wx.cloud.callContainer({
+        config: { env: 'prod-d5gnecgcl8574e82a' },
+        path: '/api/user/data',
+        header: { 'X-WX-SERVICE': 'golang-backend' },
+        method: 'GET',
+        success: (res: any) => {
+            if (res.data && res.data.code === 200 && res.data.data) {
+                const cloudData = res.data.data;
+                // 如果云端进度大于本地，或者本地全新，则覆盖本地
+                if (cloudData.level > playerData.level || (playerData.level === 1 && cloudData.level > 0)) {
+                    playerData.level = cloudData.level;
+                    playerData.coins = cloudData.coins;
+                    playerData.unlocked.tiles = cloudData.unlocked_tiles ? cloudData.unlocked_tiles.split(',') : ['default'];
+                    playerData.unlocked.emojis = cloudData.unlocked_emojis ? cloudData.unlocked_emojis.split(',') : ['default'];
+                    playerData.unlocked.bgs = cloudData.unlocked_bgs ? cloudData.unlocked_bgs.split(',') : ['auto'];
+                    playerData.unlocked.vfx = cloudData.unlocked_vfx ? cloudData.unlocked_vfx.split(',') : ['default'];
+                    // 保存到本地并更新UI
+                    try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
+                    if (coinTextObj) coinTextObj.text = playerData.coins.toString();
+                    console.log('已从云端同步最新存档');
+                }
+            }
+        }
+    });
+}
+
 let coinTextObj: PIXI.Text;
 let btnUndoGlobal: any;
 let btnExtractGlobal: any;
@@ -271,8 +301,36 @@ function savePlayerData() {
     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
 
     if (typeof wx !== 'undefined' && wx.setUserCloudStorage) {
+        // 微信开放数据域存储（好友排行榜）
         wx.setUserCloudStorage({
             KVDataList: [{ key: 'score', value: playerData.level.toString() }]
+        });
+    }
+
+    if (typeof wx !== 'undefined' && wx.cloud) {
+        // 同步给 Golang 后端（全服排行与存档备份）
+        wx.cloud.callContainer({
+            config: { env: 'prod-d5gnecgcl8574e82a' },
+            path: '/api/user/sync',
+            header: {
+                'X-WX-SERVICE': 'golang-backend',
+                'content-type': 'application/json'
+            },
+            method: 'POST',
+            data: {
+                coins: playerData.coins,
+                level: playerData.level,
+                unlocked_tiles: playerData.unlocked.tiles.join(','),
+                unlocked_emojis: playerData.unlocked.emojis.join(','),
+                unlocked_bgs: playerData.unlocked.bgs.join(','),
+                unlocked_vfx: playerData.unlocked.vfx.join(',')
+            },
+            success: (res: any) => {
+                if(res.data && res.data.code !== 200) {
+                    console.error('云端同步返回错误:', res.data.message);
+                }
+            },
+            fail: (err: any) => console.error('云端同步失败:', err)
         });
     }
 }
