@@ -255,7 +255,7 @@ try {
 
 if (typeof wx !== 'undefined' && wx.cloud) {
     wx.cloud.init({ env: 'prod-d5gnecgcl8574e82a', traceUser: true });
-    
+
     // 异步拉取云端存档
     wx.cloud.callContainer({
         config: { env: 'prod-d5gnecgcl8574e82a' },
@@ -263,16 +263,20 @@ if (typeof wx !== 'undefined' && wx.cloud) {
         header: { 'X-WX-SERVICE': 'golang-backend' },
         method: 'GET',
         success: (res: any) => {
-            if (res.data && res.data.code === 200 && res.data.data) {
-                const cloudData = res.data.data;
+            if (res.statusCode === 200 && res.data) {
+                const cloudData = res.data;
                 // 如果云端进度大于本地，或者本地全新，则覆盖本地
                 if (cloudData.level > playerData.level || (playerData.level === 1 && cloudData.level > 0)) {
-                    playerData.level = cloudData.level;
-                    playerData.coins = cloudData.coins;
-                    playerData.unlocked.tiles = cloudData.unlocked_tiles ? cloudData.unlocked_tiles.split(',') : ['default'];
-                    playerData.unlocked.emojis = cloudData.unlocked_emojis ? cloudData.unlocked_emojis.split(',') : ['default'];
-                    playerData.unlocked.bgs = cloudData.unlocked_bgs ? cloudData.unlocked_bgs.split(',') : ['auto'];
-                    playerData.unlocked.vfx = cloudData.unlocked_vfx ? cloudData.unlocked_vfx.split(',') : ['default'];
+                    playerData.level = cloudData.level || 1;
+                    playerData.coins = cloudData.coins || 0;
+                    
+                    if (cloudData.unlocked) {
+                        try {
+                            const unl = JSON.parse(cloudData.unlocked);
+                            playerData.unlocked = { ...playerData.unlocked, ...unl };
+                        } catch(e) {}
+                    }
+                    
                     // 保存到本地并更新UI
                     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
                     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
@@ -320,18 +324,52 @@ function savePlayerData() {
             data: {
                 coins: playerData.coins,
                 level: playerData.level,
-                unlocked_tiles: playerData.unlocked.tiles.join(','),
-                unlocked_emojis: playerData.unlocked.emojis.join(','),
-                unlocked_bgs: playerData.unlocked.bgs.join(','),
-                unlocked_vfx: playerData.unlocked.vfx.join(',')
+                unlocked: JSON.stringify(playerData.unlocked)
             },
             success: (res: any) => {
-                if(res.data && res.data.code !== 200) {
-                    console.error('云端同步返回错误:', res.data.message);
+                if (res.statusCode !== 200) {
+                    console.error('云端同步返回错误:', res.data.error || '未知错误');
                 }
             },
             fail: (err: any) => console.error('云端同步失败:', err)
         });
+
+        // 获取或让玩家输入昵称
+        let nickname = '';
+        try {
+            nickname = wx.getStorageSync('playerNickname');
+        } catch (e) { }
+
+        if (!nickname) {
+            nickname = '玩家_' + Math.floor(Math.random() * 1000000);
+            try { wx.setStorageSync('playerNickname', nickname); } catch(e) {}
+        }
+
+        const submitToGlobalLeaderboard = (name: string) => {
+            wx.cloud.callContainer({
+                config: { env: 'prod-d5gnecgcl8574e82a' },
+                path: '/api/leaderboard/submit',
+                header: {
+                    'X-WX-SERVICE': 'golang-backend',
+                    'content-type': 'application/json'
+                },
+                method: 'POST',
+                data: {
+                    nickname: name,
+                    avatarUrl: '', // 不使用头像或使用默认空头像
+                    score: playerData.level,
+                    mode: 'main'
+                },
+                success: (res: any) => {
+                    if (res.statusCode !== 200) {
+                        console.error('提交全服排行榜错误:', res.data.error || '未知错误');
+                    }
+                },
+                fail: (err: any) => console.error('提交全服排行榜失败:', err)
+            });
+        };
+
+        submitToGlobalLeaderboard(nickname);
     }
 }
 
@@ -477,6 +515,7 @@ const shopContainer = new PIXI.Container();
 const helpContainer = new PIXI.Container();
 const settingsContainer = new PIXI.Container();
 const rankContainer = new PIXI.Container();
+
 const checkInContainer = new PIXI.Container();
 const gameClubContainer = new PIXI.Container();
 
@@ -534,50 +573,103 @@ const rankTabsContainer = new PIXI.Container();
 rankTabsContainer.position.set(screenWidth / 2, rankTopY);
 
 const mainTab = new PIXI.Container();
-mainTab.position.set(-80, 0);
+mainTab.position.set(-105, 0);
 const mainTabBg = new PIXI.Graphics();
-const mainTabText = new PIXI.Text('🌟 主线进度', { fontFamily: '"PingFang SC"', fontSize: 16, fill: '#FFFFFF', fontWeight: 'bold' });
+const mainTabText = new PIXI.Text('🌟 好友主线', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
 mainTabText.anchor.set(0.5);
 mainTab.addChild(mainTabBg, mainTabText);
 mainTab.interactive = true;
 mainTab.buttonMode = true;
 
 const dailyTab = new PIXI.Container();
-dailyTab.position.set(80, 0);
+dailyTab.position.set(0, 0);
 const dailyTabBg = new PIXI.Graphics();
-const dailyTabText = new PIXI.Text('⏱️ 今日擂台', { fontFamily: '"PingFang SC"', fontSize: 16, fill: '#FFFFFF', fontWeight: 'bold' });
+const dailyTabText = new PIXI.Text('⏱️ 好友擂台', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
 dailyTabText.anchor.set(0.5);
 dailyTab.addChild(dailyTabBg, dailyTabText);
 dailyTab.interactive = true;
 dailyTab.buttonMode = true;
 
-rankTabsContainer.addChild(mainTab, dailyTab);
+const globalTab = new PIXI.Container();
+globalTab.position.set(105, 0);
+const globalTabBg = new PIXI.Graphics();
+const globalTabText = new PIXI.Text('🌍 全服主线', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
+globalTabText.anchor.set(0.5);
+globalTab.addChild(globalTabBg, globalTabText);
+globalTab.interactive = true;
+globalTab.buttonMode = true;
+
+rankTabsContainer.addChild(mainTab, dailyTab, globalTab);
 rankContainer.addChild(rankTabsContainer);
 
-const switchRankTab = (tab: 'main' | 'daily') => {
+let sharedSpriteRef: PIXI.Sprite | null = null;
+let hasPromptedNickname = false;
+rankContainer.children.forEach(c => {
+    if (c instanceof PIXI.Sprite && c.texture && c.texture.baseTexture) {
+        sharedSpriteRef = c;
+    }
+});
+
+const switchRankTab = (tab: 'main' | 'daily' | 'global') => {
     mainTabBg.clear();
     mainTabBg.beginFill(tab === 'main' ? 0xF59E0B : 0x9CA3AF);
-    mainTabBg.drawRoundedRect(-60, -20, 120, 40, 20);
+    mainTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
     mainTabBg.endFill();
 
     dailyTabBg.clear();
-    dailyTabBg.beginFill(tab === 'daily' ? 0x8B5CF6 : 0x9CA3AF); // 紫色代表擂台
-    dailyTabBg.drawRoundedRect(-60, -20, 120, 40, 20);
+    dailyTabBg.beginFill(tab === 'daily' ? 0x8B5CF6 : 0x9CA3AF);
+    dailyTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
     dailyTabBg.endFill();
 
-    if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
-        if (tab === 'main') {
-            dateSelectorContainer.visible = false;
-            wx.getOpenDataContext().postMessage({
-                type: 'showLeaderboard',
-                scoreKey: 'score',
-                formatType: 'level',
-                title: '🏆 主线排行榜'
+    globalTabBg.clear();
+    globalTabBg.beginFill(tab === 'global' ? 0x10B981 : 0x9CA3AF);
+    globalTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
+    globalTabBg.endFill();
+
+    // 控制全服和好友数据域显示切换
+    if (tab === 'global') {
+        if (sharedSpriteRef) sharedSpriteRef.visible = false;
+        dateSelectorContainer.visible = false;
+        globalRankListContainer.visible = true;
+        fetchAndRenderGlobalRank();
+
+        // 当用户点击全服排行榜且名字是默认玩家时，弹窗提示修改一次
+        let nickname = '';
+        try { nickname = wx.getStorageSync('playerNickname'); } catch (e) { }
+        if (!hasPromptedNickname && (!nickname || nickname.startsWith('玩家_'))) {
+            hasPromptedNickname = true;
+            wx.showModal({
+                title: '初次见面 👋',
+                content: '',
+                editable: true,
+                placeholderText: '起个响亮的名字...',
+                success: (res) => {
+                    if (res.confirm && res.content) {
+                        const newName = res.content.substring(0, 12);
+                        wx.setStorageSync('playerNickname', newName);
+                        savePlayerData(); // 保存并上报
+                        setTimeout(() => fetchAndRenderGlobalRank(), 500); // 刷新排行榜
+                    }
+                }
             });
-        } else {
-            dateSelectorContainer.visible = true;
-            dailyRankOffset = 0;
-            updateDateSelector();
+        }
+    } else {
+        if (sharedSpriteRef) sharedSpriteRef.visible = true;
+        globalRankListContainer.visible = false;
+        if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
+            if (tab === 'main') {
+                dateSelectorContainer.visible = false;
+                wx.getOpenDataContext().postMessage({
+                    type: 'showLeaderboard',
+                    scoreKey: 'score',
+                    formatType: 'level',
+                    title: '🏆 好友主线排行榜'
+                });
+            } else {
+                dateSelectorContainer.visible = true;
+                dailyRankOffset = 0;
+                updateDateSelector();
+            }
         }
     }
 };
@@ -587,6 +679,9 @@ mainTab.on('touchstart', () => switchRankTab('main'));
 
 dailyTab.on('pointerdown', () => switchRankTab('daily'));
 dailyTab.on('touchstart', () => switchRankTab('daily'));
+
+globalTab.on('pointerdown', () => switchRankTab('global'));
+globalTab.on('touchstart', () => switchRankTab('global'));
 
 let dailyRankOffset = 0;
 const dateSelectorContainer = new PIXI.Container();
@@ -736,12 +831,95 @@ closeRankBtn.on('pointerdown', closeRank);
 closeRankBtn.on('touchstart', closeRank);
 rankContainer.addChild(closeRankBtn);
 
+// 移除原来的全服排行榜独立弹窗逻辑，将其融入现有的排行榜中
+const globalRankListContainer = new PIXI.Container();
+globalRankListContainer.position.set(screenWidth * 0.1, rankTopY + 50);
+globalRankListContainer.visible = false; // 初始隐藏
+rankContainer.addChild(globalRankListContainer);
+
+function fetchAndRenderGlobalRank() {
+    globalRankListContainer.removeChildren();
+    const loadingText = new PIXI.Text('加载中...', { fill: '#FFFFFF', fontSize: 16 });
+    globalRankListContainer.addChild(loadingText);
+
+    if (typeof wx !== 'undefined' && wx.cloud) {
+        wx.cloud.callContainer({
+            config: { env: 'prod-d5gnecgcl8574e82a' },
+            path: '/api/leaderboard/top?mode=main',
+            header: { 'X-WX-SERVICE': 'golang-backend' },
+            method: 'GET',
+            success: (res: any) => {
+                globalRankListContainer.removeChildren();
+                if (res.statusCode === 200 && Array.isArray(res.data)) {
+                    const EMOJIS = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔'];
+                    const getAvatarForName = (name: string) => {
+                        let hash = 0;
+                        for (let i = 0; i < name.length; i++) {
+                            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                        }
+                        return EMOJIS[Math.abs(hash) % EMOJIS.length];
+                    };
+
+                    res.data.forEach((player: any, index: number) => {
+                        const row = new PIXI.Container();
+                        row.y = index * 45;
+
+                        const rowBg = new PIXI.Graphics();
+                        rowBg.beginFill(index % 2 === 0 ? 0x374151 : 0x1F2937, 0.8);
+                        rowBg.drawRoundedRect(0, 0, screenWidth * 0.8, 40, 10);
+                        rowBg.endFill();
+                        row.addChild(rowBg);
+
+                        const rankText = new PIXI.Text(`${index + 1}`, { fill: index < 3 ? '#FCD34D' : '#9CA3AF', fontSize: 18, fontWeight: 'bold' });
+                        rankText.anchor.set(0.5);
+                        rankText.position.set(20, 20);
+
+                        const avatar = getAvatarForName(player.nickname || '匿名玩家');
+                        const avatarText = new PIXI.Text(avatar, { fontSize: 22 });
+                        avatarText.anchor.set(0.5);
+                        avatarText.position.set(60, 20);
+                        
+                        let displayNickname = player.nickname || '匿名玩家';
+                        if (displayNickname.length > 8) {
+                            displayNickname = displayNickname.substring(0, 8) + '...';
+                        }
+
+                        const nameText = new PIXI.Text(displayNickname, { fill: '#FFFFFF', fontSize: 16 });
+                        nameText.anchor.set(0, 0.5);
+                        nameText.position.set(85, 20);
+                        
+                        const scoreText = new PIXI.Text(`${player.score} 关`, { fill: '#10B981', fontSize: 16, fontWeight: 'bold' });
+                        scoreText.anchor.set(1, 0.5);
+                        scoreText.position.set(screenWidth * 0.8 - 15, 20);
+
+                        row.addChild(rankText, avatarText, nameText, scoreText);
+                        globalRankListContainer.addChild(row);
+                    });
+                } else {
+                    const errText = new PIXI.Text('加载失败', { fill: '#EF4444', fontSize: 16 });
+                    globalRankListContainer.addChild(errText);
+                }
+            },
+            fail: () => {
+                globalRankListContainer.removeChildren();
+                const errText = new PIXI.Text('网络错误', { fill: '#EF4444', fontSize: 16 });
+                globalRankListContainer.addChild(errText);
+            }
+        });
+    } else {
+        globalRankListContainer.removeChildren();
+        const errText = new PIXI.Text('全服排行仅在微信环境可用', { fill: '#EF4444', fontSize: 16 });
+        globalRankListContainer.addChild(errText);
+    }
+}
+
 app.stage.addChild(homeContainer);
 app.stage.addChild(gameContainer);
 app.stage.addChild(shopContainer);
 app.stage.addChild(helpContainer);
 app.stage.addChild(settingsContainer);
 app.stage.addChild(rankContainer);
+
 app.stage.addChild(checkInContainer);
 app.stage.addChild(gameClubContainer);
 
@@ -1458,7 +1636,7 @@ function initHomeScreen() {
         }
 
         const panelW = screenWidth * 0.8;
-        const panelH = 320;
+        const panelH = 380;
 
         const panel = new PIXI.Container();
         panel.x = screenWidth / 2;
@@ -1477,6 +1655,71 @@ function initHomeScreen() {
         title.anchor.set(0.5);
         title.y = -panelH / 2 + 35;
         panel.addChild(title);
+
+        // 获取当前昵称和头像
+        let nickname = '';
+        try { nickname = wx.getStorageSync('playerNickname') || '匿名玩家'; } catch (e) { nickname = '匿名玩家'; }
+        
+        const EMOJIS = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔'];
+        const getAvatarForName = (name: string) => {
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) {
+                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return EMOJIS[Math.abs(hash) % EMOJIS.length];
+        };
+
+        const profileContainer = new PIXI.Container();
+        profileContainer.y = -100;
+        
+        const profileBg = new PIXI.Graphics();
+        profileBg.beginFill(0xF3F4F6); // 浅灰背景
+        profileBg.drawRoundedRect(-panelW / 2 + 25, -25, panelW - 50, 50, 15);
+        profileBg.endFill();
+        
+        const avatarText = new PIXI.Text(getAvatarForName(nickname), { fontSize: 24 });
+        avatarText.anchor.set(0.5);
+        avatarText.position.set(-panelW / 2 + 55, 0);
+
+        let displayNickname = nickname;
+        if (displayNickname.length > 8) {
+            displayNickname = displayNickname.substring(0, 8) + '...';
+        }
+
+        const nameText = new PIXI.Text(displayNickname, {
+            fontFamily: '"PingFang SC"', fontSize: 18, fill: '#374151', fontWeight: 'bold'
+        });
+        nameText.anchor.set(0, 0.5);
+        nameText.position.set(-panelW / 2 + 80, 0);
+
+        const editIcon = new PIXI.Text('✏️ 修改', {
+            fontFamily: '"PingFang SC"', fontSize: 14, fill: '#8B5CF6', fontWeight: 'bold'
+        });
+        editIcon.anchor.set(1, 0.5);
+        editIcon.position.set(panelW / 2 - 40, 0);
+
+        profileContainer.addChild(profileBg, avatarText, nameText, editIcon);
+        profileContainer.interactive = true;
+        profileContainer.buttonMode = true;
+        profileContainer.on('pointerdown', () => {
+            if (typeof wx === 'undefined') return;
+            wx.showModal({
+                title: '修改名片',
+                content: '',
+                editable: true,
+                placeholderText: '起个响亮的名字...',
+                success: (res) => {
+                    if (res.confirm && res.content) {
+                        const newName = res.content.substring(0, 12);
+                        wx.setStorageSync('playerNickname', newName);
+                        savePlayerData();
+                        wx.showToast({ title: '修改成功', icon: 'success' });
+                        renderSettingsScreen(); // 重新渲染以更新名字和头像
+                    }
+                }
+            });
+        });
+        panel.addChild(profileContainer);
 
         // 创建开关项
         const createToggle = (label: string, yOffset: number, key: 'bgm' | 'sfx' | 'vibration', onChange: (val: boolean) => void) => {
@@ -1599,9 +1842,7 @@ function initHomeScreen() {
                 if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
                     switchRankTab('main'); // 默认切换到主线
                 } else {
-                    wx.showToast({ title: '排行榜仅在微信环境可用', icon: 'none' });
-                    rankContainer.visible = false;
-                    homeContainer.visible = true;
+                    switchRankTab('global'); // 若没有开放数据域环境，默认显示全服
                 }
             };
             btn.on('pointerdown', showRank);
@@ -1652,6 +1893,7 @@ function initHomeScreen() {
 
     pveBtn.on('pointerdown', () => {
         currentGameMode = 'main';
+        currentLevel = Math.max(currentLevel, playerData.level || 1); // 确保读取最新进度
         homeContainer.visible = false;
         gameContainer.visible = true;
         updateGlobalBackground(true, currentLevel);
@@ -1659,6 +1901,7 @@ function initHomeScreen() {
     });
     pveBtn.on('touchstart', () => {
         currentGameMode = 'main';
+        currentLevel = Math.max(currentLevel, playerData.level || 1);
         homeContainer.visible = false;
         gameContainer.visible = true;
         updateGlobalBackground(true, currentLevel);
@@ -2092,8 +2335,8 @@ function renderShopScreen() {
 
     const backBg = new PIXI.Graphics();
     // 完全对齐旁边的“金币栏”风格
-    backBg.beginFill(0xFFFFFF, 0.85); 
-    backBg.lineStyle(2, 0xBCAAA4, 1); 
+    backBg.beginFill(0xFFFFFF, 0.85);
+    backBg.lineStyle(2, 0xBCAAA4, 1);
     backBg.drawCircle(18, 18, 18); // 直径36，与金币栏高度完全一致
     backBg.endFill();
 

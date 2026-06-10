@@ -18,7 +18,7 @@ type User struct {
 
 type Leaderboard struct {
 	ID        uint      `gorm:"primaryKey"`
-	OpenID    string    `gorm:"index;type:varchar(100)" json:"openid"`
+	OpenID    string    `gorm:"index;column:openid;type:varchar(100)" json:"openid"`
 	AvatarUrl string    `gorm:"type:varchar(255)" json:"avatarUrl"`
 	Nickname  string    `gorm:"type:varchar(100)" json:"nickname"`
 	Score     int       `gorm:"index;column:score" json:"score"`

@@ -2,7 +2,7 @@
     "miniprogramRoot": "./",
     "projectname": "one-line-physics",
     "description": "One Line Physics WeChat Mini Game",
-    "appid": "wx24779acf1efb0a66",
+    "appid": "wx2a0b7fbdef6eda6a",
     "setting": {
         "urlCheck": true,
         "es6": false,
