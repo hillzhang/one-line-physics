@@ -6,8 +6,14 @@ let currentFormat = 'level';
 let currentTitle = '';
 
 function drawLeaderboard(dataList) {
-  // 清除画布
+  let sysInfo = wx.getSystemInfoSync();
+  let pixelRatio = sysInfo.pixelRatio || 2;
+  
+  // 清除画布 (使用物理像素大小)
   context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+  
+  context.save();
+  context.scale(pixelRatio, pixelRatio);
 
   context.fillRoundRect = function (x, y, w, h, r) {
     this.beginPath();
@@ -31,69 +37,43 @@ function drawLeaderboard(dataList) {
     this.stroke();
   };
 
-  let centerX = sharedCanvas.width / 2;
+  let logicalWidth = sharedCanvas.width / pixelRatio;
+  let logicalHeight = sharedCanvas.height / pixelRatio;
+  let centerX = logicalWidth / 2;
 
   if (!dataList || dataList.length === 0) {
     context.fillStyle = '#8D6E63';
     context.font = 'bold 20px system-ui';
     context.textAlign = 'center';
-    context.fillText('暂无好友游玩记录', centerX, sharedCanvas.height / 2);
+    context.fillText('暂无好友游玩记录', centerX, logicalHeight / 2);
+    context.restore();
     return;
   }
 
-  // 绘制标题
-  context.fillStyle = '#FFFFFF';
-  context.font = 'bold 24px system-ui';
-  context.textAlign = 'center';
-  const displayTitle = currentTitle || '🏆 好友排行榜';
-  context.fillText(displayTitle, centerX, 40);
 
   let cardWidth = 300;
   let cardLeft = centerX - cardWidth / 2;
 
   // 画好友列表
   dataList.forEach((item, index) => {
-    let y = index * 64 + 70; // 适配新的 sharedCanvas 高度
+    let cardHeight = 48;
+    let y = index * 56 + 10; 
 
-    // 绘制底部阴影
-    context.fillStyle = 'rgba(0, 0, 0, 0.08)';
-    context.fillRoundRect(cardLeft, y + 3, cardWidth, 52, 16);
-
-    // 背景卡片 (纯白)
-    context.fillStyle = '#FFFFFF';
-    context.fillRoundRect(cardLeft, y, cardWidth, 52, 16);
-
-    // 卡片内发光边框
-    context.lineWidth = 2;
-    context.strokeStyle = 'rgba(245, 158, 11, 0.2)'; // 淡淡的金色边框
-    context.strokeRoundRect(cardLeft, y, cardWidth, 52, 16);
-
-    // 排名圆圈或文字
-    let rankX = cardLeft + 28;
-    if (index < 3) {
-      context.beginPath();
-      context.arc(rankX, y + 26, 12, 0, 2 * Math.PI);
-      if (index === 0) context.fillStyle = '#F59E0B'; // 金
-      else if (index === 1) context.fillStyle = '#94A3B8'; // 银
-      else if (index === 2) context.fillStyle = '#B45309'; // 铜
-      context.fill();
-
-      context.lineWidth = 2;
-      context.strokeStyle = '#FFFFFF';
-      context.stroke();
-
-      context.fillStyle = '#FFFFFF';
-      context.font = '900 14px system-ui';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(`${index + 1}`, rankX, y + 27);
+    // 背景卡片 (与主域排行榜颜色同步，交替深浅)
+    if (index % 2 === 0) {
+      context.fillStyle = 'rgba(55, 65, 81, 0.8)'; // 对应 0x374151
     } else {
-      context.fillStyle = '#9CA3AF'; // 灰色名次
-      context.font = '900 16px system-ui';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(`${index + 1}`, rankX, y + 27);
+      context.fillStyle = 'rgba(31, 41, 55, 0.8)'; // 对应 0x1F2937
     }
+    context.fillRoundRect(cardLeft, y, cardWidth, cardHeight, 12);
+
+    // 排名文字
+    let rankX = cardLeft + 28;
+    context.fillStyle = '#FBBF24'; // 全体使用金黄色名次，不要圆圈
+    context.font = '900 16px system-ui';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(`${index + 1}`, rankX, y + cardHeight / 2 + 1);
 
     // 头像
     let avatarX = cardLeft + 65;
@@ -101,30 +81,26 @@ function drawLeaderboard(dataList) {
     avatarImg.src = item.avatarUrl;
     avatarImg.onload = () => {
       context.save();
-      context.beginPath();
-      context.arc(avatarX, y + 26, 16, 0, Math.PI * 2, false);
-      context.clip();
-      context.drawImage(avatarImg, avatarX - 16, y + 10, 32, 32);
-      context.restore();
+      context.scale(pixelRatio, pixelRatio);
       
-      // 头像边框
       context.beginPath();
-      context.arc(avatarX, y + 26, 16, 0, Math.PI * 2, false);
-      context.lineWidth = 2;
-      context.strokeStyle = '#FDE68A'; // 浅金边
-      context.stroke();
+      context.arc(avatarX, y + cardHeight / 2, 14, 0, Math.PI * 2, false);
+      context.clip();
+      context.drawImage(avatarImg, avatarX - 14, y + cardHeight / 2 - 14, 28, 28);
+      
+      context.restore();
     };
 
     // 昵称
-    context.fillStyle = '#5D4037';
-    context.font = 'bold 15px system-ui';
+    context.fillStyle = '#FFFFFF';
+    context.font = 'normal 15px system-ui';
     context.textAlign = 'left';
     context.textBaseline = 'middle';
     let nickname = item.nickname || '神秘玩家';
     if (nickname.length > 7) nickname = nickname.substring(0, 6) + '...';
-    context.fillText(nickname, cardLeft + 95, y + 26);
+    context.fillText(nickname, cardLeft + 90, y + cardHeight / 2 + 1);
 
-    // 分数胶囊徽章
+    // 分数文字
     let score = 0;
     let scoreKV = item.KVDataList.find(kv => kv.key === currentScoreKey);
     if (scoreKV) score = parseInt(scoreKV.value, 10);
@@ -135,30 +111,18 @@ function drawLeaderboard(dataList) {
       let s = (score % 60).toString().padStart(2, '0');
       displayStr = `${m}:${s}`;
     } else {
-      displayStr = `第 ${score} 关`;
+      displayStr = `${score} 关`;
     }
-    context.font = '900 13px system-ui';
-    let textWidth = context.measureText(displayStr).width;
-    let badgeWidth = Math.max(textWidth + 20, 56);
-    let badgeHeight = 24;
-    let badgeX = cardLeft + cardWidth - 12 - badgeWidth;
-    let badgeY = y + 14;
 
-    // 徽章底色
-    context.fillStyle = '#ECFDF5';
-    context.fillRoundRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2);
-    // 徽章描边
-    context.lineWidth = 1.5;
-    context.strokeStyle = '#34D399';
-    context.strokeRoundRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2);
-
-    // 徽章文字
-    context.fillStyle = '#059669';
-    context.textAlign = 'center';
+    // 绿色分数文字，靠右对齐，不需要底色徽章
+    context.fillStyle = '#10B981'; // 翠绿色
+    context.font = 'bold 15px system-ui';
+    context.textAlign = 'right';
     context.textBaseline = 'middle';
-    // 取消 +1 偏移，使文字在部分设备上能更好地居中
-    context.fillText(displayStr, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+    context.fillText(displayStr, cardLeft + cardWidth - 20, y + cardHeight / 2 + 1);
   });
+  
+  context.restore();
 }
 
 let cachedDataList = null;
@@ -169,12 +133,20 @@ wx.onMessage(data => {
     currentFormat = data.formatType || 'level';
     currentTitle = data.title || '';
 
+    let sysInfo = wx.getSystemInfoSync();
+    let pixelRatio = sysInfo.pixelRatio || 2;
+    let logicalWidth = sharedCanvas.width / pixelRatio;
+    let logicalHeight = sharedCanvas.height / pixelRatio;
+
     // 强制先清理并显示正在加载
     context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+    context.save();
+    context.scale(pixelRatio, pixelRatio);
     context.fillStyle = '#8D6E63';
     context.font = 'bold 24px system-ui';
     context.textAlign = 'center';
-    context.fillText('加载中...', sharedCanvas.width / 2, sharedCanvas.height / 2);
+    context.fillText('加载中...', logicalWidth / 2, logicalHeight / 2);
+    context.restore();
 
     wx.getFriendCloudStorage({
       keyList: [currentScoreKey],
@@ -208,16 +180,19 @@ wx.onMessage(data => {
           return;
         }
         context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+        context.save();
+        context.scale(pixelRatio, pixelRatio);
 
         context.fillStyle = '#EF4444';
         context.font = '16px system-ui';
         context.textAlign = 'center';
 
         let errorMsg = '加载失败: ' + (err.errMsg || JSON.stringify(err));
-        context.fillText(errorMsg, sharedCanvas.width / 2, sharedCanvas.height / 2);
+        context.fillText(errorMsg, logicalWidth / 2, logicalHeight / 2);
 
         context.fillStyle = '#666666';
-        context.fillText('请检查AppID是否合法及隐私协议是否配置', sharedCanvas.width / 2, sharedCanvas.height / 2 + 30);
+        context.fillText('请检查AppID是否合法及隐私协议是否配置', logicalWidth / 2, logicalHeight / 2 + 30);
+        context.restore();
       }
     });
   } else if (data.type === 'hideLeaderboard' || data.type === 'clear') {

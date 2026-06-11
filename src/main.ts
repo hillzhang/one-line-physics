@@ -283,7 +283,7 @@ interface PlayerData {
     settings: { bgm: boolean; sfx: boolean; vibration: boolean; };
 }
 let playerData: PlayerData = {
-    coins: 800, // 初始送一些金币
+    coins: 200, // 初始送一些金币
     unlocked: { tiles: ['default'], emojis: ['default'], bgs: ['auto'], vfx: ['default'] },
     equipped: { tile: 'default', emoji: 'default', bg: 'auto', vfx: 'default' },
     props: { undo: 3, extract: 2, shuffle: 2 },
@@ -366,7 +366,7 @@ let gameTimerInterval: any = null;
 let gameTimeSeconds: number = 0;
 let dailyTimerText: PIXI.Text | null = null;
 
-function savePlayerData() {
+const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) => {
     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
 
@@ -421,33 +421,38 @@ function savePlayerData() {
             } catch (e) { }
         }
 
-        const submitToGlobalLeaderboard = (name: string) => {
-            wx.cloud.callContainer({
-                config: { env: 'prod-d5gnecgcl8574e82a' },
-                path: '/api/leaderboard/submit',
-                header: {
-                    'X-WX-SERVICE': 'golang-backend',
-                    'content-type': 'application/json'
-                },
-                method: 'POST',
-                data: {
-                    nickname: name,
-                    avatarUrl: '', // 不使用头像或使用默认空头像
-                    score: playerData.level,
-                    mode: 'main'
-                },
-                success: (res: any) => {
-                    if (res.statusCode !== 200) {
-                        console.error('提交全服排行榜错误:', res.data.error || '未知错误');
-                    }
-                },
-                fail: (err: any) => console.error('提交全服排行榜失败:', err)
-            });
-        };
+        let finalScore = playerData.level;
+        if (mode === 'daily' && scoreValue !== undefined) {
+            finalScore = scoreValue;
+        }
 
-        submitToGlobalLeaderboard(nickname);
+        submitToGlobalLeaderboard(nickname, mode, finalScore);
     }
 }
+
+const submitToGlobalLeaderboard = (name: string, mode: 'main' | 'daily' = 'main', score: number = 0) => {
+    wx.cloud.callContainer({
+        config: { env: 'prod-d5gnecgcl8574e82a' },
+        path: '/api/leaderboard/submit',
+        header: {
+            'X-WX-SERVICE': 'golang-backend',
+            'content-type': 'application/json'
+        },
+        method: 'POST',
+        data: {
+            nickname: name,
+            avatarUrl: '', // 不使用头像或使用默认空头像
+            score: score,
+            mode: mode
+        },
+        success: (res: any) => {
+            if (res.statusCode !== 200) {
+                console.error('提交全服排行榜错误:', res.data.error || '未知错误');
+            }
+        },
+        fail: (err: any) => console.error('提交全服排行榜失败:', err)
+    });
+};
 
 const fruitBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_fruits.png');
 fruitBase.setSize(512, 512);
@@ -646,51 +651,90 @@ let sharedTexture: PIXI.Texture | null = null;
 if (typeof wx !== 'undefined' && wx.getOpenDataContext) {
     const openDataContext = wx.getOpenDataContext();
     const sharedCanvas = openDataContext.canvas;
-    sharedCanvas.width = screenWidth * 0.9;
-    sharedCanvas.height = screenHeight * 0.6;
+    const pixelRatio = sysInfo.pixelRatio || 2;
+    sharedCanvas.width = screenWidth * 0.9 * pixelRatio;
+    sharedCanvas.height = screenHeight * 0.6 * pixelRatio;
 
     sharedTexture = PIXI.Texture.from(sharedCanvas as any);
     const sharedSprite = new PIXI.Sprite(sharedTexture);
+    sharedSprite.width = screenWidth * 0.9;
+    sharedSprite.height = screenHeight * 0.6;
 
     const rankTopY = sysInfo.safeArea ? Math.max(sysInfo.safeArea.top + 50, 90) : 90;
-    sharedSprite.position.set(screenWidth * 0.05, rankTopY + 50);
+    sharedSprite.position.set(screenWidth * 0.05, rankTopY + 110);
     rankContainer.addChild(sharedSprite);
 }
 
 const rankTopY = sysInfo.safeArea ? Math.max(sysInfo.safeArea.top + 50, 90) : 90;
 
-// 排行榜 Tabs
+// 排行榜控制状态
+let currentRankScope: 'friend' | 'global' = 'friend';
+let currentRankMode: 'main' | 'daily' = 'main';
+
 const rankTabsContainer = new PIXI.Container();
 rankTabsContainer.position.set(screenWidth / 2, rankTopY);
 
-const mainTab = new PIXI.Container();
-mainTab.position.set(-105, 0);
-const mainTabBg = new PIXI.Graphics();
-const mainTabText = new PIXI.Text('🌟 好友主线', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
-mainTabText.anchor.set(0.5);
-mainTab.addChild(mainTabBg, mainTabText);
-mainTab.interactive = true;
-mainTab.buttonMode = true;
+// === 第一层：范围选择 (微信好友 vs 全服玩家) ===
+const scopeSegmentContainer = new PIXI.Container();
+scopeSegmentContainer.position.set(0, 0);
 
-const dailyTab = new PIXI.Container();
-dailyTab.position.set(0, 0);
-const dailyTabBg = new PIXI.Graphics();
-const dailyTabText = new PIXI.Text('🔥 好友擂台', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
-dailyTabText.anchor.set(0.5);
-dailyTab.addChild(dailyTabBg, dailyTabText);
-dailyTab.interactive = true;
-dailyTab.buttonMode = true;
+const scopeBg = new PIXI.Graphics();
+scopeBg.beginFill(0x000000, 0.4);
+scopeBg.drawRoundedRect(-130, -20, 260, 40, 20);
+scopeBg.endFill();
 
-const globalTab = new PIXI.Container();
-globalTab.position.set(105, 0);
-const globalTabBg = new PIXI.Graphics();
-const globalTabText = new PIXI.Text('🌍 全服主线', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
-globalTabText.anchor.set(0.5);
-globalTab.addChild(globalTabBg, globalTabText);
-globalTab.interactive = true;
-globalTab.buttonMode = true;
+const scopeSlider = new PIXI.Graphics();
+scopeSegmentContainer.addChild(scopeBg, scopeSlider);
 
-rankTabsContainer.addChild(mainTab, dailyTab, globalTab);
+const scopeFriendTab = new PIXI.Container();
+scopeFriendTab.position.set(-65, 0);
+const scopeFriendText = new PIXI.Text('👥 微信好友', { fontFamily: '"PingFang SC"', fontSize: 16, fill: '#FFFFFF', fontWeight: 'bold' });
+scopeFriendText.anchor.set(0.5);
+scopeFriendTab.addChild(scopeFriendText);
+scopeFriendTab.interactive = true;
+scopeFriendTab.buttonMode = true;
+
+const scopeGlobalTab = new PIXI.Container();
+scopeGlobalTab.position.set(65, 0);
+const scopeGlobalText = new PIXI.Text('🌍 全服玩家', { fontFamily: '"PingFang SC"', fontSize: 16, fill: '#FFFFFF', fontWeight: 'bold' });
+scopeGlobalText.anchor.set(0.5);
+scopeGlobalTab.addChild(scopeGlobalText);
+scopeGlobalTab.interactive = true;
+scopeGlobalTab.buttonMode = true;
+
+scopeSegmentContainer.addChild(scopeFriendTab, scopeGlobalTab);
+
+// === 第二层：模式选择 (主线闯关 vs 每日擂台) ===
+const modeSegmentContainer = new PIXI.Container();
+modeSegmentContainer.position.set(0, 50);
+
+const modeBg = new PIXI.Graphics();
+modeBg.beginFill(0x000000, 0.4);
+modeBg.drawRoundedRect(-100, -16, 200, 32, 16);
+modeBg.endFill();
+
+const modeSlider = new PIXI.Graphics();
+modeSegmentContainer.addChild(modeBg, modeSlider);
+
+const modeMainTab = new PIXI.Container();
+modeMainTab.position.set(-50, 0);
+const modeMainText = new PIXI.Text('🌟 主线闯关', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
+modeMainText.anchor.set(0.5);
+modeMainTab.addChild(modeMainText);
+modeMainTab.interactive = true;
+modeMainTab.buttonMode = true;
+
+const modeDailyTab = new PIXI.Container();
+modeDailyTab.position.set(50, 0);
+const modeDailyText = new PIXI.Text('🔥 每日擂台', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
+modeDailyText.anchor.set(0.5);
+modeDailyTab.addChild(modeDailyText);
+modeDailyTab.interactive = true;
+modeDailyTab.buttonMode = true;
+
+modeSegmentContainer.addChild(modeMainTab, modeDailyTab);
+
+rankTabsContainer.addChild(scopeSegmentContainer, modeSegmentContainer);
 rankContainer.addChild(rankTabsContainer);
 
 let sharedSpriteRef: PIXI.Sprite | null = null;
@@ -701,65 +745,72 @@ rankContainer.children.forEach(c => {
     }
 });
 
-const switchRankTab = (tab: 'main' | 'daily' | 'global') => {
-    mainTabBg.clear();
-    mainTabBg.beginFill(tab === 'main' ? 0xF59E0B : 0x9CA3AF);
-    mainTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
-    mainTabBg.endFill();
+const updateRankUI = () => {
+    // 更新第一层滑块
+    scopeSlider.clear();
+    if (currentRankScope === 'friend') {
+        scopeSlider.beginFill(0x3B82F6, 0.9);
+        scopeSlider.drawRoundedRect(-126, -16, 126, 32, 16);
+    } else {
+        scopeSlider.beginFill(0x10B981, 0.9);
+        scopeSlider.drawRoundedRect(0, -16, 126, 32, 16);
+    }
+    scopeSlider.endFill();
 
-    dailyTabBg.clear();
-    dailyTabBg.beginFill(tab === 'daily' ? 0x8B5CF6 : 0x9CA3AF);
-    dailyTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
-    dailyTabBg.endFill();
+    // 更新第二层滑块
+    modeSlider.clear();
+    if (currentRankMode === 'main') {
+        modeSlider.beginFill(0xF59E0B, 0.9);
+        modeSlider.drawRoundedRect(-96, -12, 96, 24, 12);
+    } else {
+        modeSlider.beginFill(0x8B5CF6, 0.9);
+        modeSlider.drawRoundedRect(0, -12, 96, 24, 12);
+    }
+    modeSlider.endFill();
 
-    globalTabBg.clear();
-    globalTabBg.beginFill(tab === 'global' ? 0x10B981 : 0x9CA3AF);
-    globalTabBg.drawRoundedRect(-48, -18, 96, 36, 18);
-    globalTabBg.endFill();
-
-    // 控制全服和好友数据域显示切换
-    if (tab === 'global') {
+    if (currentRankScope === 'global') {
         if (sharedSpriteRef) sharedSpriteRef.visible = false;
         dateSelectorContainer.visible = false;
         globalRankListContainer.visible = true;
-        fetchAndRenderGlobalRank();
+        fetchAndRenderGlobalRank(currentRankMode);
 
-        // 当用户点击全服排行榜且名字是默认玩家时，弹窗提示修改一次
-        let nickname = '';
-        let isAutoGenerated = false;
-        try {
-            nickname = wx.getStorageSync('playerNickname');
-            isAutoGenerated = wx.getStorageSync('isNicknameAutoGenerated') === true;
-        } catch (e) { }
-        if (!hasPromptedNickname && (!nickname || nickname.startsWith('玩家_') || isAutoGenerated)) {
-            hasPromptedNickname = true;
-            wx.showModal({
-                title: '初次见面 👋',
-                content: '',
-                editable: true,
-                placeholderText: '起个响亮的名字...',
-                success: (res) => {
-                    if (res.confirm && res.content) {
-                        const newName = res.content.substring(0, 12);
-                        wx.setStorageSync('playerNickname', newName);
-                        wx.setStorageSync('isNicknameAutoGenerated', false);
-                        savePlayerData(); // 保存并上报
-                        setTimeout(() => fetchAndRenderGlobalRank(), 500); // 刷新排行榜
+        if (!hasPromptedNickname) {
+            let nickname = '';
+            let isAutoGenerated = false;
+            try {
+                nickname = wx.getStorageSync('playerNickname');
+                isAutoGenerated = wx.getStorageSync('isNicknameAutoGenerated') === true;
+            } catch (e) { }
+            if (!nickname || nickname.startsWith('玩家_') || isAutoGenerated) {
+                hasPromptedNickname = true;
+                wx.showModal({
+                    title: '初次见面 👋',
+                    content: '',
+                    editable: true,
+                    placeholderText: '起个响亮的名字...',
+                    success: (res) => {
+                        if (res.confirm && res.content) {
+                            const newName = res.content.substring(0, 12);
+                            wx.setStorageSync('playerNickname', newName);
+                            wx.setStorageSync('isNicknameAutoGenerated', false);
+                            savePlayerData(); // 保存并上报
+                            setTimeout(() => fetchAndRenderGlobalRank(currentRankMode), 500);
+                        }
                     }
-                }
-            });
+                });
+            }
         }
     } else {
         if (sharedSpriteRef) sharedSpriteRef.visible = true;
         globalRankListContainer.visible = false;
         if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
-            if (tab === 'main') {
+            if (currentRankMode === 'main') {
                 dateSelectorContainer.visible = false;
                 wx.getOpenDataContext().postMessage({
                     type: 'showLeaderboard',
                     scoreKey: 'score',
                     formatType: 'level',
-                    title: '🏆 好友主线排行榜'
+                    title: '🏆 微信好友 · 主线榜'
                 });
             } else {
                 dateSelectorContainer.visible = true;
@@ -770,18 +821,19 @@ const switchRankTab = (tab: 'main' | 'daily' | 'global') => {
     }
 };
 
-mainTab.on('pointerdown', () => switchRankTab('main'));
-mainTab.on('touchstart', () => switchRankTab('main'));
+scopeFriendTab.on('pointerdown', () => { currentRankScope = 'friend'; updateRankUI(); });
+scopeFriendTab.on('touchstart', () => { currentRankScope = 'friend'; updateRankUI(); });
+scopeGlobalTab.on('pointerdown', () => { currentRankScope = 'global'; updateRankUI(); });
+scopeGlobalTab.on('touchstart', () => { currentRankScope = 'global'; updateRankUI(); });
 
-dailyTab.on('pointerdown', () => switchRankTab('daily'));
-dailyTab.on('touchstart', () => switchRankTab('daily'));
-
-globalTab.on('pointerdown', () => switchRankTab('global'));
-globalTab.on('touchstart', () => switchRankTab('global'));
+modeMainTab.on('pointerdown', () => { currentRankMode = 'main'; updateRankUI(); });
+modeMainTab.on('touchstart', () => { currentRankMode = 'main'; updateRankUI(); });
+modeDailyTab.on('pointerdown', () => { currentRankMode = 'daily'; updateRankUI(); });
+modeDailyTab.on('touchstart', () => { currentRankMode = 'daily'; updateRankUI(); });
 
 let dailyRankOffset = 0;
 const dateSelectorContainer = new PIXI.Container();
-dateSelectorContainer.position.set(screenWidth / 2, rankTopY + 45);
+dateSelectorContainer.position.set(screenWidth / 2, rankTopY + 110);
 
 const prevBtn = new PIXI.Container();
 prevBtn.position.set(-80, 0);
@@ -929,11 +981,11 @@ rankContainer.addChild(closeRankBtn);
 
 // 移除原来的全服排行榜独立弹窗逻辑，将其融入现有的排行榜中
 const globalRankListContainer = new PIXI.Container();
-globalRankListContainer.position.set(screenWidth * 0.1, rankTopY + 50);
+globalRankListContainer.position.set(screenWidth * 0.1, rankTopY + 110);
 globalRankListContainer.visible = false; // 初始隐藏
 rankContainer.addChild(globalRankListContainer);
 
-function fetchAndRenderGlobalRank() {
+function fetchAndRenderGlobalRank(mode: 'main' | 'daily') {
     globalRankListContainer.removeChildren();
     const loadingText = new PIXI.Text('加载中...', { fill: '#FFFFFF', fontSize: 16 });
     globalRankListContainer.addChild(loadingText);
@@ -941,7 +993,7 @@ function fetchAndRenderGlobalRank() {
     if (typeof wx !== 'undefined' && wx.cloud) {
         wx.cloud.callContainer({
             config: { env: 'prod-d5gnecgcl8574e82a' },
-            path: '/api/leaderboard/top?mode=main',
+            path: `/api/leaderboard/top?mode=${mode}`,
             header: { 'X-WX-SERVICE': 'golang-backend' },
             method: 'GET',
             success: (res: any) => {
@@ -984,7 +1036,14 @@ function fetchAndRenderGlobalRank() {
                         nameText.anchor.set(0, 0.5);
                         nameText.position.set(85, 20);
 
-                        const scoreText = new PIXI.Text(`${player.score} 关`, { fill: '#10B981', fontSize: 16, fontWeight: 'bold' });
+                        let scoreDisplay = `${player.score} 关`;
+                        if (mode === 'daily') {
+                            let totalSeconds = player.score;
+                            let min = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+                            let sec = (totalSeconds % 60).toString().padStart(2, '0');
+                            scoreDisplay = `${min}:${sec}`;
+                        }
+                        const scoreText = new PIXI.Text(scoreDisplay, { fill: mode === 'daily' ? '#F59E0B' : '#10B981', fontSize: 16, fontWeight: 'bold' });
                         scoreText.anchor.set(1, 0.5);
                         scoreText.position.set(screenWidth * 0.8 - 15, 20);
 
@@ -1816,9 +1875,12 @@ function initHomeScreen() {
                 homeContainer.visible = false;
                 rankContainer.visible = true;
                 if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
-                    switchRankTab('main'); // 默认切换到主线
+                    currentRankScope = 'friend';
+                    currentRankMode = 'main';
+                    updateRankUI(); // 默认切换到主线
                 } else {
-                    switchRankTab('global'); // 若没有开放数据域环境，默认显示全服
+                    currentRankScope = 'global';
+                    updateRankUI(); // 若没有开放数据域环境，默认显示全服
                 }
             };
             btn.on('pointerdown', showRank);
@@ -3586,7 +3648,7 @@ function checkMatch() {
                     });
                 } else {
                     playerData.coins += 100;
-                    savePlayerData();
+                    savePlayerData('daily', gameTimeSeconds);
 
                     if (typeof wx !== 'undefined' && wx.setUserCloudStorage) {
                         wx.setUserCloudStorage({
