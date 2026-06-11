@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `check_in_streak` int DEFAULT 0 COMMENT '连续签到天数',
   `ad_date` varchar(50) DEFAULT NULL COMMENT '最后看广告日期(YYYY-MM-DD)',
   `ad_count` int DEFAULT 0 COMMENT '当日看广告次数',
+  `game_club_date` varchar(50) DEFAULT NULL COMMENT '最后领游戏圈奖励日期(YYYY-MM-DD)',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`openid`)
