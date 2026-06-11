@@ -346,6 +346,9 @@ if (typeof wx !== 'undefined' && wx.cloud) {
                     }
                     if (cloudData.checkInDate) playerData.checkInDate = cloudData.checkInDate;
                     if (cloudData.checkInStreak !== undefined) playerData.checkInStreak = cloudData.checkInStreak;
+                    if (cloudData.adDate) playerData.adDate = cloudData.adDate;
+                    if (cloudData.adCount !== undefined) playerData.adCount = cloudData.adCount;
+                    if (cloudData.gameClubDate) playerData.gameClubDate = cloudData.gameClubDate;
 
                     // 保存到本地并更新UI
                     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
@@ -370,7 +373,20 @@ let gameTimerInterval: any = null;
 let gameTimeSeconds: number = 0;
 let dailyTimerText: PIXI.Text | null = null;
 
+let lastAdWatchTime: number = 0;
+const AD_COOLDOWN_MS = 60 * 1000; // 1分钟冷却限制
+
 const checkAndWatchAd = (onSuccess: () => void) => {
+    const now = Date.now();
+    const timeSinceLastAd = now - lastAdWatchTime;
+    if (timeSinceLastAd < AD_COOLDOWN_MS) {
+        const secondsLeft = Math.ceil((AD_COOLDOWN_MS - timeSinceLastAd) / 1000);
+        if (typeof wx !== 'undefined') {
+            wx.showToast({ title: `请休息一下，${secondsLeft}秒后再试`, icon: 'none' });
+        }
+        return;
+    }
+
     const today = new Date().toISOString().split('T')[0];
     if (playerData.adDate !== today) {
         playerData.adDate = today;
@@ -395,12 +411,14 @@ const checkAndWatchAd = (onSuccess: () => void) => {
             showCancel: false,
             success: () => {
                 playerData.adCount!++;
+                lastAdWatchTime = Date.now();
                 onSuccess();
             }
         });
     } else {
         // web testing fallback
         playerData.adCount!++;
+        lastAdWatchTime = Date.now();
         onSuccess();
     }
 };
@@ -436,7 +454,8 @@ const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) =>
                 checkInDate: playerData.checkInDate,
                 checkInStreak: playerData.checkInStreak,
                 adDate: playerData.adDate,
-                adCount: playerData.adCount
+                adCount: playerData.adCount,
+                gameClubDate: playerData.gameClubDate
             },
             success: (res: any) => {
                 if (res.statusCode !== 200) {
@@ -583,7 +602,7 @@ const SHOP_ITEMS = {
         { id: 'undo', name: '撤回道具 x3', price: 100, isConsumable: true },
         { id: 'extract', name: '移出道具 x3', price: 150, isConsumable: true },
         { id: 'shuffle', name: '洗牌道具 x3', price: 120, isConsumable: true },
-        { id: 'bundle', name: '超值大礼包', price: 300, isConsumable: true }
+        { id: 'bundle', name: '超值大礼包', price: 300, isConsumable: true, desc: '包含：撤回x3、移出x3、洗牌x3' }
     ],
     coins: [
         { id: 'ad', name: '观看视频广告', price: 0, isVideo: true },
@@ -703,6 +722,7 @@ if (typeof wx !== 'undefined' && wx.getOpenDataContext) {
 
     const rankTopY = sysInfo.safeArea ? Math.max(sysInfo.safeArea.top + 50, 90) : 90;
     sharedSprite.position.set(screenWidth * 0.05, rankTopY + 110);
+    sharedSprite.interactive = true; // 拦截点击排行榜区域
     rankContainer.addChild(sharedSprite);
 }
 
@@ -714,6 +734,7 @@ let currentRankMode: 'main' | 'daily' = 'main';
 
 const rankTabsContainer = new PIXI.Container();
 rankTabsContainer.position.set(screenWidth / 2, rankTopY);
+rankTabsContainer.interactive = true; // 拦截点击
 
 // === 第一层：范围选择 (微信好友 vs 全服玩家) ===
 const scopeSegmentContainer = new PIXI.Container();
@@ -921,6 +942,7 @@ datePickerContainer.addChild(datePickerOverlay);
 
 const dpPanel = new PIXI.Container();
 dpPanel.position.set(screenWidth / 2, screenHeight / 2);
+dpPanel.interactive = true; // 拦截点击
 const dpBg = new PIXI.Graphics();
 dpBg.beginFill(0x1F2937);
 dpBg.lineStyle(2, 0x8B5CF6);
@@ -1139,6 +1161,7 @@ checkInContainer.addChild(checkInOverlay);
 
 const checkInPanel = new PIXI.Container();
 checkInPanel.position.set(screenWidth / 2, screenHeight / 2);
+checkInPanel.interactive = true; // 拦截点击
 checkInContainer.addChild(checkInPanel);
 
 const checkInBg = new PIXI.Graphics();
@@ -1312,33 +1335,34 @@ gameClubContainer.addChild(gameClubOverlay);
 
 const gameClubPanel = new PIXI.Container();
 gameClubPanel.position.set(screenWidth / 2, screenHeight / 2);
+gameClubPanel.interactive = true; // 拦截点击
 gameClubContainer.addChild(gameClubPanel);
 
 // 外层边框
 const gcBg = new PIXI.Graphics();
 gcBg.beginFill(0xFFFAF0);
 gcBg.lineStyle(4, 0xF59E0B);
-gcBg.drawRoundedRect(-160, -180, 320, 360, 20);
+gcBg.drawRoundedRect(-160, -200, 320, 400, 20);
 gcBg.endFill();
 gameClubPanel.addChild(gcBg);
 
 // 标题牌
 const gcTitleText = new PIXI.Text('圈子好礼', { fontFamily: '"PingFang SC"', fontSize: 24, fill: '#D97706', fontWeight: 'bold' });
 gcTitleText.anchor.set(0.5);
-gcTitleText.position.set(0, -140);
+gcTitleText.position.set(0, -160);
 gameClubPanel.addChild(gcTitleText);
 
 // 中心大图标
 const gcIconText = new PIXI.Text('💬', { fontSize: 80 });
 gcIconText.anchor.set(0.5);
-gcIconText.position.set(0, -40);
+gcIconText.position.set(0, -60);
 gameClubPanel.addChild(gcIconText);
 // 添加呼吸动画
 let gcTime = 0;
 app.ticker.add((delta) => {
     if (gameClubContainer.visible) {
         gcTime += delta * 0.05;
-        gcIconText.y = -40 + Math.sin(gcTime) * 5;
+        gcIconText.y = -60 + Math.sin(gcTime) * 5;
     }
 });
 
@@ -1347,12 +1371,12 @@ const gcDesc = new PIXI.Text('加入游戏圈，并产生有效互动\n(发帖/�
     fontFamily: '"PingFang SC"', fontSize: 16, fill: '#92400E', align: 'center', lineHeight: 26, fontWeight: 'bold'
 });
 gcDesc.anchor.set(0.5);
-gcDesc.y = 60;
+gcDesc.y = 35;
 gameClubPanel.addChild(gcDesc);
 
 // 关闭按钮
 const gcCloseBtn = new PIXI.Container();
-gcCloseBtn.position.set(160, -180);
+gcCloseBtn.position.set(160, -200);
 const gcCloseBg = new PIXI.Graphics();
 gcCloseBg.beginFill(0xEF4444);
 gcCloseBg.drawCircle(0, 0, 16);
@@ -1369,7 +1393,7 @@ gameClubPanel.addChild(gcCloseBtn);
 
 // 底部加入按钮
 const btnJoinGc = new PIXI.Container();
-btnJoinGc.position.set(0, 130);
+btnJoinGc.position.set(0, 115);
 const gcJoinBg = new PIXI.Graphics();
 gcJoinBg.beginFill(0x3B82F6);
 gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
@@ -1381,27 +1405,17 @@ btnJoinGc.interactive = true;
 btnJoinGc.buttonMode = true;
 gameClubPanel.addChild(btnJoinGc);
 
+// 前往游戏圈链接文本
+const gcLinkTxt = new PIXI.Text('前往游戏圈 >', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#3B82F6' });
+gcLinkTxt.anchor.set(0.5);
+gcLinkTxt.position.set(0, 165);
+gcLinkTxt.interactive = true;
+gcLinkTxt.buttonMode = true;
+gameClubPanel.addChild(gcLinkTxt);
+
 let gameCirclePageManager: any = null;
 
-btnJoinGc.on('pointerdown', () => {
-    const today = getOffsetDateInfo(0).key.replace('daily_score_', '');
-    const hasRewardToday = playerData.gameClubDate === today;
-
-    if (!hasRewardToday) {
-        playerData.coins += 50;
-        playerData.gameClubDate = today;
-        try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
-        if (coinTextObj) coinTextObj.text = playerData.coins.toString();
-        wx.showToast({ title: '获得 50 金币！', icon: 'none' });
-
-        // 刷新按钮状态
-        gcJoinBg.clear();
-        gcJoinBg.beginFill(0x9CA3AF);
-        gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
-        gcJoinBg.endFill();
-        gcJoinTxt.text = '去逛逛';
-    }
-
+const openGameClubFeature = () => {
     if (typeof wx !== 'undefined') {
         if (wx.createPageManager) {
             const openlink = '-SSEykJvFV3pORt5kTNpS9Vql7BfqGfEBffsdkin54TRdWJUtpmtKsclGBBv1pgh8bSTVLd38SXwxzdbqhjEwuOL6w7FbM3wvZCAWz-QLHNzdgrR1KFO4QzsR17cPvZKMhG8LCVucMuST6Bx1gaajz6C7cj3AWC34zpRM3K775-utHf36Mw-95-tLf6CDmStpDqtugeA7FhBA2d9nsUbkI6AltDramvRK4slDqfd1Pnlq3MQE6bjvDMsCGz2Ui0JfzTHwEqzZrF7vEKAq-yD8gwhqfCmSb54M6XeLTY1e6hGjJTkNMFaCcncgEwm_K29ZFNHcBXpG_V7kFz3CfOmeA';
@@ -1418,8 +1432,35 @@ btnJoinGc.on('pointerdown', () => {
             wx.showToast({ title: '请在微信真机上体验游戏圈', icon: 'none' });
         }
     }
+};
 
-    gameClubContainer.visible = false;
+btnJoinGc.on('pointerdown', () => {
+    const today = getOffsetDateInfo(0).key.replace('daily_score_', '');
+    const hasRewardToday = playerData.gameClubDate === today;
+
+    if (!hasRewardToday) {
+        playerData.coins += 50;
+        playerData.gameClubDate = today;
+        savePlayerData();
+        if (coinTextObj) coinTextObj.text = playerData.coins.toString();
+        wx.showToast({ title: '获得 50 金币！', icon: 'none' });
+
+        // 刷新按钮状态
+        gcJoinBg.clear();
+        gcJoinBg.beginFill(0x9CA3AF);
+        gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
+        gcJoinBg.endFill();
+        gcJoinTxt.text = '已领取';
+        btnJoinGc.interactive = false;
+        btnJoinGc.buttonMode = false;
+        
+        // 发放奖励的同时，强制拉起游戏圈
+        openGameClubFeature();
+    }
+});
+
+gcLinkTxt.on('pointerdown', () => {
+    openGameClubFeature();
 });
 
 const openGameClubScreen = () => {
@@ -1431,12 +1472,16 @@ const openGameClubScreen = () => {
         gcJoinBg.beginFill(0x9CA3AF);
         gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
         gcJoinBg.endFill();
-        gcJoinTxt.text = '去逛逛';
+        gcJoinTxt.text = '已领取';
+        btnJoinGc.interactive = false;
+        btnJoinGc.buttonMode = false;
     } else {
         gcJoinBg.beginFill(0x3B82F6);
         gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
         gcJoinBg.endFill();
         gcJoinTxt.text = '加 入';
+        btnJoinGc.interactive = true;
+        btnJoinGc.buttonMode = true;
     }
 
     gameClubContainer.visible = true;
@@ -1601,6 +1646,7 @@ function initHomeScreen() {
         const panel = new PIXI.Container();
         panel.x = screenWidth / 2;
         panel.y = screenHeight / 2;
+        panel.interactive = true; // 拦截点击，防止点到下方背景触发关闭
 
         // Background
         const bg = new PIXI.Graphics();
@@ -1717,6 +1763,7 @@ function initHomeScreen() {
         const panel = new PIXI.Container();
         panel.x = screenWidth / 2;
         panel.y = screenHeight / 2;
+        panel.interactive = true; // 拦截点击，防止点到下方背景触发关闭
 
         const panelBg = new PIXI.Graphics();
         panelBg.lineStyle(4, 0x8D6E63);
@@ -2638,7 +2685,7 @@ function renderShopScreen() {
             if (isConsumable) {
                 if (item.isVideo) {
                     checkAndWatchAd(() => {
-                        playerData.coins += 300;
+                        playerData.coins += 100;
                         savePlayerData();
                         renderShopScreen(); // refresh
                     });
@@ -2680,9 +2727,10 @@ function renderShopScreen() {
                         };
 
                         if (typeof wx !== 'undefined') {
+                            const descText = item.desc ? `\n(${item.desc})` : '';
                             wx.showModal({
                                 title: '购买确认',
-                                content: `确定花费 ${item.price} 金币购买「${item.name}」吗？`,
+                                content: `确定花费 ${item.price} 金币购买「${item.name}」吗？${descText}`,
                                 success: (res: any) => {
                                     if (res.confirm) confirmBuy();
                                 }

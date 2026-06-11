@@ -16,6 +16,7 @@ type User struct {
 	CheckInStreak int       `gorm:"column:check_in_streak;default:0" json:"checkInStreak"`
 	AdDate        string    `gorm:"column:ad_date;type:varchar(50)" json:"adDate"`
 	AdCount       int       `gorm:"column:ad_count;default:0" json:"adCount"`
+	GameClubDate  string    `gorm:"column:game_club_date;type:varchar(50)" json:"gameClubDate"`
 	CreatedAt     time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }

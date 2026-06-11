@@ -51,6 +51,7 @@ func SyncUserData(db *gorm.DB) gin.HandlerFunc {
 				existing.CheckInStreak = req.CheckInStreak
 				existing.AdDate = req.AdDate
 				existing.AdCount = req.AdCount
+				existing.GameClubDate = req.GameClubDate
 				existing.UpdatedAt = req.UpdatedAt
 				db.Save(&existing)
 			} else {
