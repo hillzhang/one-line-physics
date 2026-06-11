@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `settings_json` text COMMENT '玩家个人设置(音效震动等)',
   `check_in_date` varchar(50) DEFAULT NULL COMMENT '最后签到日期(YYYY-MM-DD)',
   `check_in_streak` int DEFAULT 0 COMMENT '连续签到天数',
+  `ad_date` varchar(50) DEFAULT NULL COMMENT '最后看广告日期(YYYY-MM-DD)',
+  `ad_count` int DEFAULT 0 COMMENT '当日看广告次数',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`openid`)

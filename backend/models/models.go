@@ -14,6 +14,8 @@ type User struct {
 	SettingsJSON  string    `gorm:"column:settings_json;type:text" json:"settings"`
 	CheckInDate   string    `gorm:"column:check_in_date;type:varchar(50)" json:"checkInDate"`
 	CheckInStreak int       `gorm:"column:check_in_streak;default:0" json:"checkInStreak"`
+	AdDate        string    `gorm:"column:ad_date;type:varchar(50)" json:"adDate"`
+	AdCount       int       `gorm:"column:ad_count;default:0" json:"adCount"`
 	CreatedAt     time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }

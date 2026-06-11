@@ -280,6 +280,8 @@ interface PlayerData {
     checkInDate: string; // "YYYY-MM-DD"
     gameClubDate: string; // "YYYY-MM-DD"
     checkInStreak: number;
+    adDate?: string;
+    adCount?: number;
     settings: { bgm: boolean; sfx: boolean; vibration: boolean; };
 }
 let playerData: PlayerData = {
@@ -291,6 +293,8 @@ let playerData: PlayerData = {
     checkInDate: '',
     gameClubDate: '',
     checkInStreak: 0,
+    adDate: '',
+    adCount: 0,
     settings: { bgm: true, sfx: true, vibration: true }
 };
 
@@ -366,6 +370,41 @@ let gameTimerInterval: any = null;
 let gameTimeSeconds: number = 0;
 let dailyTimerText: PIXI.Text | null = null;
 
+const checkAndWatchAd = (onSuccess: () => void) => {
+    const today = new Date().toISOString().split('T')[0];
+    if (playerData.adDate !== today) {
+        playerData.adDate = today;
+        playerData.adCount = 0;
+    }
+
+    if (playerData.adCount! >= 5) {
+        if (typeof wx !== 'undefined') {
+            wx.showModal({
+                title: '次数已达上限',
+                content: '今日免费免广告奖励次数已用尽，请明日再来！',
+                showCancel: false
+            });
+        }
+        return;
+    }
+
+    if (typeof wx !== 'undefined') {
+        wx.showModal({
+            title: '提示',
+            content: '广告功能正在完善中，直接为您发放奖励！',
+            showCancel: false,
+            success: () => {
+                playerData.adCount!++;
+                onSuccess();
+            }
+        });
+    } else {
+        // web testing fallback
+        playerData.adCount!++;
+        onSuccess();
+    }
+};
+
 const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) => {
     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
@@ -395,7 +434,9 @@ const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) =>
                 equipped: JSON.stringify(playerData.equipped),
                 settings: JSON.stringify(playerData.settings),
                 checkInDate: playerData.checkInDate,
-                checkInStreak: playerData.checkInStreak
+                checkInStreak: playerData.checkInStreak,
+                adDate: playerData.adDate,
+                adCount: playerData.adCount
             },
             success: (res: any) => {
                 if (res.statusCode !== 200) {
@@ -2596,10 +2637,11 @@ function renderShopScreen() {
 
             if (isConsumable) {
                 if (item.isVideo) {
-                    if (typeof wx !== 'undefined') wx.showToast({ title: '模拟视频：+300金币', icon: 'none' });
-                    playerData.coins += 300;
-                    savePlayerData();
-                    renderShopScreen(); // refresh
+                    checkAndWatchAd(() => {
+                        playerData.coins += 300;
+                        savePlayerData();
+                        renderShopScreen(); // refresh
+                    });
                 } else if (item.isShare) {
                     if (typeof wx !== 'undefined' && wx.shareAppMessage) {
                         wx.shareAppMessage({
@@ -3768,19 +3810,14 @@ function watchAdToGetProp(propKey: 'undo' | 'extract' | 'shuffle') {
         cancelText: '取消',
         success: (res: any) => {
             if (res.confirm) {
-                // TODO: 接入真实的微信激励视频广告 (wx.createRewardedVideoAd)
-                // 此处为模拟观看广告过程
-                wx.showLoading({ title: '播放广告中...', mask: true });
-                setTimeout(() => {
-                    wx.hideLoading();
-                    wx.showToast({ title: '获取成功！', icon: 'success' });
+                checkAndWatchAd(() => {
                     playerData.props[propKey]++;
                     savePlayerData();
 
                     if (propKey === 'undo' && btnUndoGlobal) btnUndoGlobal.updateCount(playerData.props.undo);
                     if (propKey === 'extract' && btnExtractGlobal) btnExtractGlobal.updateCount(playerData.props.extract);
                     if (propKey === 'shuffle' && btnShuffleGlobal) btnShuffleGlobal.updateCount(playerData.props.shuffle);
-                }, 2000);
+                });
             } else {
                 wx.showModal({
                     title: '不想看广告？',

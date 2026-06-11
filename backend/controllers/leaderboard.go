@@ -38,11 +38,21 @@ func SubmitScore(db *gorm.DB) gin.HandlerFunc {
 			result := db.Where("openid = ? AND mode = ?", openID, req.Mode).First(&existingRecord)
 			
 			if result.Error == nil {
-				// 记录存在，更新昵称和头像，只有当新分数更高时才更新分数
+				// 记录存在，更新昵称和头像
 				existingRecord.Nickname = req.Nickname
 				existingRecord.AvatarUrl = req.AvatarUrl
-				if req.Score > existingRecord.Score {
-					existingRecord.Score = req.Score
+				
+				// 根据模式判断是否覆盖分数
+				if req.Mode == "daily" {
+					// 擂台模式（时间竞速）：时间越短越好。如果是0则表示没成绩，也可以覆盖
+					if existingRecord.Score == 0 || req.Score < existingRecord.Score {
+						existingRecord.Score = req.Score
+					}
+				} else {
+					// 主线模式：分数越大越好
+					if req.Score > existingRecord.Score {
+						existingRecord.Score = req.Score
+					}
 				}
 				db.Save(&existingRecord)
 			} else {
@@ -72,8 +82,13 @@ func GetTopLeaderboard(db *gorm.DB) gin.HandlerFunc {
 
 		var top []models.Leaderboard
 		if db != nil {
-			// 这里假设 score 是越高越好，如果是竞速则应该是 ASC
-			db.Where("mode = ?", mode).Order("score DESC").Limit(50).Find(&top)
+			if mode == "daily" {
+				// 擂台竞速：从小到大排序
+				db.Where("mode = ?", mode).Order("score ASC").Limit(50).Find(&top)
+			} else {
+				// 主线闯关：从大到小排序
+				db.Where("mode = ?", mode).Order("score DESC").Limit(50).Find(&top)
+			}
 		} else {
 			// Mock 测试数据
 			top = []models.Leaderboard{
