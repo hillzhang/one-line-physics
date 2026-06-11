@@ -14,10 +14,65 @@ try {
 }
 const CLOUD_STORAGE_BASE = 'https://7072-prod-d5gnecgcl8574e82a-1441836262.tcb.qcloud.la/';
 import { LevelGenerator, TileData } from './core/LevelGenerator';
+import { loadingArtBase64 } from './loadingArtBase64';
 
 function getTodayString() {
     const d = new Date();
-    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Reusable logo logic
+function createPremiumLogoContainer() {
+    const titleContainer = new PIXI.Container();
+    const chars = ['奇', '趣', '果', '宝', '消'];
+    let currentX = -130;
+    const charNodes: { node: PIXI.Container, baseX: number, baseY: number, baseRot: number, phase: number }[] = [];
+
+    chars.forEach((char, i) => {
+        const charContainer = new PIXI.Container();
+        const shadowText = new PIXI.Text(char, { fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif', fontSize: 70, fontWeight: '900', fill: '#4E2914', stroke: '#4E2914', strokeThickness: 24, lineJoin: 'round' });
+        shadowText.y = 6;
+        const outlineText = new PIXI.Text(char, { fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif', fontSize: 70, fontWeight: '900', fill: '#4E2914', stroke: '#4E2914', strokeThickness: 24, lineJoin: 'round' });
+        const whiteStroke = new PIXI.Text(char, { fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif', fontSize: 70, fontWeight: '900', fill: '#FFFFFF', stroke: '#FFFFFF', strokeThickness: 10, lineJoin: 'round' });
+        const mainText = new PIXI.Text(char, { fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif', fontSize: 70, fontWeight: '900', fill: ['#FF5252', '#FF9800'], lineJoin: 'round' });
+
+        [shadowText, outlineText, whiteStroke, mainText].forEach(t => { t.anchor.set(0.5); charContainer.addChild(t); });
+
+        const baseX = currentX;
+        const baseY = (i % 2 === 0) ? -6 : 6;
+        const baseRot = (Math.random() - 0.5) * 0.2;
+        charContainer.x = baseX; charContainer.y = baseY; charContainer.rotation = baseRot;
+        titleContainer.addChild(charContainer);
+        charNodes.push({ node: charContainer, baseX, baseY, baseRot, phase: i * 0.8 });
+        currentX += 65;
+    });
+
+    const star1 = new PIXI.Text('⭐', { fontSize: 30 }); star1.position.set(110, -40); star1.anchor.set(0.5); titleContainer.addChild(star1);
+    const star2 = new PIXI.Text('✨', { fontSize: 24 }); star2.position.set(-140, 15); star2.anchor.set(0.5); titleContainer.addChild(star2);
+    const leaf1 = new PIXI.Text('🌸', { fontSize: 24 }); leaf1.position.set(-110, -35); leaf1.anchor.set(0.5); titleContainer.addChild(leaf1);
+
+    const signContainer = new PIXI.Container(); signContainer.y = 65;
+    const ropes = new PIXI.Graphics(); ropes.lineStyle(4, 0x4E2914); ropes.moveTo(-25, -25); ropes.lineTo(-15, 0); ropes.moveTo(25, -25); ropes.lineTo(15, 0); signContainer.addChild(ropes);
+    const board = new PIXI.Graphics(); board.beginFill(0xCA9C7A); board.lineStyle(4, 0x4E2914); board.drawRoundedRect(-50, -15, 100, 30, 8); board.endFill();
+    board.lineStyle(2, 0x8C5A35, 0.5); board.moveTo(-30, -4); board.lineTo(30, -4); board.moveTo(-40, 6); board.lineTo(20, 6); signContainer.addChild(board);
+    const seasonText = new PIXI.Text('S1 赛季', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: '900', stroke: '#4E2914', strokeThickness: 4 });
+    seasonText.anchor.set(0.5); signContainer.addChild(seasonText);
+    titleContainer.addChild(signContainer);
+
+    return { titleContainer, charNodes, star1, star2, leaf1, signContainer };
+}
+
+function updatePremiumLogoAnimation(logoObjs: any, titleAnimTime: number, targetTitleScale: number) {
+    const { titleContainer, charNodes, star1, star2, leaf1, signContainer } = logoObjs;
+    charNodes.forEach((c: any) => {
+        c.node.y = c.baseY + Math.sin(titleAnimTime + c.phase) * 5;
+        c.node.rotation = c.baseRot + Math.cos(titleAnimTime * 0.8 + c.phase) * 0.04;
+    });
+    star1.rotation = 0.3 + Math.sin(titleAnimTime * 1.5) * 0.2; star1.scale.set(1 + Math.sin(titleAnimTime * 2) * 0.15);
+    star2.rotation = Math.cos(titleAnimTime * 1.2) * 0.2; star2.scale.set(1 + Math.cos(titleAnimTime * 2.5) * 0.15);
+    leaf1.rotation = -0.5 + Math.sin(titleAnimTime * 0.8) * 0.1;
+    signContainer.rotation = Math.sin(titleAnimTime * 1.2) * 0.05; signContainer.y = 65 + Math.cos(titleAnimTime * 1.5) * 2;
+    titleContainer.scale.set(targetTitleScale * (1 + Math.sin(titleAnimTime * 0.6) * 0.015));
 }
 
 function getOffsetDateInfo(offset: number) {
@@ -269,25 +324,25 @@ if (typeof wx !== 'undefined' && wx.cloud) {
                 if (cloudData.level > playerData.level || (playerData.level === 1 && cloudData.level > 0)) {
                     playerData.level = cloudData.level || 1;
                     playerData.coins = cloudData.coins || 0;
-                    
+
                     if (cloudData.unlocked && cloudData.unlocked.trim() !== '') {
                         try {
                             const unl = JSON.parse(cloudData.unlocked);
                             playerData.unlocked = { ...playerData.unlocked, ...unl };
-                        } catch(e) {}
+                        } catch (e) { }
                     }
                     if (cloudData.props && cloudData.props.trim() !== '') {
-                        try { playerData.props = { ...playerData.props, ...JSON.parse(cloudData.props) }; } catch(e) {}
+                        try { playerData.props = { ...playerData.props, ...JSON.parse(cloudData.props) }; } catch (e) { }
                     }
                     if (cloudData.equipped && cloudData.equipped.trim() !== '') {
-                        try { playerData.equipped = { ...playerData.equipped, ...JSON.parse(cloudData.equipped) }; } catch(e) {}
+                        try { playerData.equipped = { ...playerData.equipped, ...JSON.parse(cloudData.equipped) }; } catch (e) { }
                     }
                     if (cloudData.settings && cloudData.settings.trim() !== '') {
-                        try { playerData.settings = { ...playerData.settings, ...JSON.parse(cloudData.settings) }; } catch(e) {}
+                        try { playerData.settings = { ...playerData.settings, ...JSON.parse(cloudData.settings) }; } catch (e) { }
                     }
                     if (cloudData.checkInDate) playerData.checkInDate = cloudData.checkInDate;
                     if (cloudData.checkInStreak !== undefined) playerData.checkInStreak = cloudData.checkInStreak;
-                    
+
                     // 保存到本地并更新UI
                     try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
                     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
@@ -356,9 +411,14 @@ function savePlayerData() {
             nickname = wx.getStorageSync('playerNickname');
         } catch (e) { }
 
-        if (!nickname) {
-            nickname = '玩家_' + Math.floor(Math.random() * 1000000);
-            try { wx.setStorageSync('playerNickname', nickname); } catch(e) {}
+        if (!nickname || nickname.startsWith('玩家_')) {
+            const adjs = ['快乐的', '调皮的', '聪明的', '勇敢的', '懒惰的', '迷人的', '神秘的', '幸运的', '憨厚的', '机智的', '可爱的', '酷酷的', '贪吃的', '无敌的', '呆萌的'];
+            const nouns = ['小猫', '小狗', '狮子', '熊猫', '兔子', '狐狸', '考拉', '猴子', '老虎', '企鹅', '大象', '海豚', '仓鼠', '水豚', '海豹'];
+            nickname = adjs[Math.floor(Math.random() * adjs.length)] + nouns[Math.floor(Math.random() * nouns.length)];
+            try {
+                wx.setStorageSync('playerNickname', nickname);
+                wx.setStorageSync('isNicknameAutoGenerated', true);
+            } catch (e) { }
         }
 
         const submitToGlobalLeaderboard = (name: string) => {
@@ -535,7 +595,7 @@ const rankContainer = new PIXI.Container();
 const checkInContainer = new PIXI.Container();
 const gameClubContainer = new PIXI.Container();
 
-// 半透明商城背景
+// 半透明商城背景 (This overlay is static, but shop re-renders it dynamically, we leave this one as is or remove it. But better to keep it to avoid errors)
 const shopOverlay = new PIXI.Graphics();
 shopOverlay.beginFill(0x000000, 0.8);
 shopOverlay.drawRect(0, 0, screenWidth, screenHeight);
@@ -549,6 +609,10 @@ helpOverlay.beginFill(0x000000, 0.8);
 helpOverlay.drawRect(0, 0, screenWidth, screenHeight);
 helpOverlay.endFill();
 helpOverlay.interactive = true;
+helpOverlay.on('pointerdown', () => {
+    helpContainer.visible = false;
+    homeContainer.visible = true;
+});
 helpContainer.addChild(helpOverlay);
 
 // 半透明设置背景
@@ -557,6 +621,10 @@ settingsOverlay.beginFill(0x000000, 0.8);
 settingsOverlay.drawRect(0, 0, screenWidth, screenHeight);
 settingsOverlay.endFill();
 settingsOverlay.interactive = true;
+settingsOverlay.on('pointerdown', () => {
+    settingsContainer.visible = false;
+    homeContainer.visible = true;
+});
 settingsContainer.addChild(settingsOverlay);
 
 // 半透明排行背景
@@ -565,6 +633,13 @@ rankOverlay.beginFill(0x000000, 0.8);
 rankOverlay.drawRect(0, 0, screenWidth, screenHeight);
 rankOverlay.endFill();
 rankOverlay.interactive = true;
+rankOverlay.on('pointerdown', () => {
+    rankContainer.visible = false;
+    homeContainer.visible = true;
+    if (typeof wx !== 'undefined' && wx.getOpenDataContext) {
+        wx.getOpenDataContext().postMessage({ type: 'hideLeaderboard' });
+    }
+});
 rankContainer.addChild(rankOverlay);
 
 let sharedTexture: PIXI.Texture | null = null;
@@ -600,7 +675,7 @@ mainTab.buttonMode = true;
 const dailyTab = new PIXI.Container();
 dailyTab.position.set(0, 0);
 const dailyTabBg = new PIXI.Graphics();
-const dailyTabText = new PIXI.Text('⏱️ 好友擂台', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
+const dailyTabText = new PIXI.Text('🔥 好友擂台', { fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: 'bold' });
 dailyTabText.anchor.set(0.5);
 dailyTab.addChild(dailyTabBg, dailyTabText);
 dailyTab.interactive = true;
@@ -651,8 +726,12 @@ const switchRankTab = (tab: 'main' | 'daily' | 'global') => {
 
         // 当用户点击全服排行榜且名字是默认玩家时，弹窗提示修改一次
         let nickname = '';
-        try { nickname = wx.getStorageSync('playerNickname'); } catch (e) { }
-        if (!hasPromptedNickname && (!nickname || nickname.startsWith('玩家_'))) {
+        let isAutoGenerated = false;
+        try {
+            nickname = wx.getStorageSync('playerNickname');
+            isAutoGenerated = wx.getStorageSync('isNicknameAutoGenerated') === true;
+        } catch (e) { }
+        if (!hasPromptedNickname && (!nickname || nickname.startsWith('玩家_') || isAutoGenerated)) {
             hasPromptedNickname = true;
             wx.showModal({
                 title: '初次见面 👋',
@@ -663,6 +742,7 @@ const switchRankTab = (tab: 'main' | 'daily' | 'global') => {
                     if (res.confirm && res.content) {
                         const newName = res.content.substring(0, 12);
                         wx.setStorageSync('playerNickname', newName);
+                        wx.setStorageSync('isNicknameAutoGenerated', false);
                         savePlayerData(); // 保存并上报
                         setTimeout(() => fetchAndRenderGlobalRank(), 500); // 刷新排行榜
                     }
@@ -867,7 +947,7 @@ function fetchAndRenderGlobalRank() {
             success: (res: any) => {
                 globalRankListContainer.removeChildren();
                 if (res.statusCode === 200 && Array.isArray(res.data)) {
-                    const EMOJIS = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔'];
+                    const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔'];
                     const getAvatarForName = (name: string) => {
                         let hash = 0;
                         for (let i = 0; i < name.length; i++) {
@@ -894,7 +974,7 @@ function fetchAndRenderGlobalRank() {
                         const avatarText = new PIXI.Text(avatar, { fontSize: 22 });
                         avatarText.anchor.set(0.5);
                         avatarText.position.set(60, 20);
-                        
+
                         let displayNickname = player.nickname || '匿名玩家';
                         if (displayNickname.length > 8) {
                             displayNickname = displayNickname.substring(0, 8) + '...';
@@ -903,7 +983,7 @@ function fetchAndRenderGlobalRank() {
                         const nameText = new PIXI.Text(displayNickname, { fill: '#FFFFFF', fontSize: 16 });
                         nameText.anchor.set(0, 0.5);
                         nameText.position.set(85, 20);
-                        
+
                         const scoreText = new PIXI.Text(`${player.score} 关`, { fill: '#10B981', fontSize: 16, fontWeight: 'bold' });
                         scoreText.anchor.set(1, 0.5);
                         scoreText.position.set(screenWidth * 0.8 - 15, 20);
@@ -954,6 +1034,7 @@ checkInOverlay.beginFill(0x000000, 0.8);
 checkInOverlay.drawRect(0, 0, screenWidth, screenHeight);
 checkInOverlay.endFill();
 checkInOverlay.interactive = true;
+checkInOverlay.on('pointerdown', () => { checkInContainer.visible = false; });
 checkInContainer.addChild(checkInOverlay);
 
 const checkInPanel = new PIXI.Container();
@@ -1126,6 +1207,7 @@ gameClubOverlay.beginFill(0x000000, 0.8);
 gameClubOverlay.drawRect(0, 0, screenWidth, screenHeight);
 gameClubOverlay.endFill();
 gameClubOverlay.interactive = true;
+gameClubOverlay.on('pointerdown', () => { gameClubContainer.visible = false; });
 gameClubContainer.addChild(gameClubOverlay);
 
 const gameClubPanel = new PIXI.Container();
@@ -1222,7 +1304,7 @@ btnJoinGc.on('pointerdown', () => {
 
     if (typeof wx !== 'undefined') {
         if (wx.createPageManager) {
-            const openlink = '-SSEykJvFV3pORt5kTNpS7Syrqv0Th147auYIM712N9i3TxtsuncMjCxWDFPzU4jHH5iEPxOLmy2NsB8CLtMXe7lIzog_pTmm7ndym3oGv4Mww5gm3Ov2PuRKZmZ-iVrjCTb1oOLqNCXfK2D6MbRBW63XSh9tJEV_aiNsmEG77L6Tn4FTnqyUKE6VdeFC88EUAf7HqepDgdt0yy0RStPh7I4TL7fMJ1Hm5JSEEmeWFbRVSKLZtHHDR1moBmDRv7OFM1F6FRss5cz5a-J5oiYLdYwIlVxyY63v1gMbuCi_3ulHUdSh9r7WmKareOBPWvfNaQGqdBBUPX7juu2fqXo-g';
+            const openlink = '-SSEykJvFV3pORt5kTNpS9Vql7BfqGfEBffsdkin54TRdWJUtpmtKsclGBBv1pgh8bSTVLd38SXwxzdbqhjEwuOL6w7FbM3wvZCAWz-QLHNzdgrR1KFO4QzsR17cPvZKMhG8LCVucMuST6Bx1gaajz6C7cj3AWC34zpRM3K775-utHf36Mw-95-tLf6CDmStpDqtugeA7FhBA2d9nsUbkI6AltDramvRK4slDqfd1Pnlq3MQE6bjvDMsCGz2Ui0JfzTHwEqzZrF7vEKAq-yD8gwhqfCmSb54M6XeLTY1e6hGjJTkNMFaCcncgEwm_K29ZFNHcBXpG_V7kFz3CfOmeA';
             if (!gameCirclePageManager) {
                 gameCirclePageManager = wx.createPageManager();
             }
@@ -1276,9 +1358,12 @@ function initHomeScreen() {
     settingsBg.lineStyle(2, 0xBCAAA4, 1); // 浅灰棕色描边
     settingsBg.drawCircle(0, 0, 18);
     settingsBg.endFill();
-    const settingsIcon = new PIXI.Text('⚙️', { fontSize: 20 });
-    settingsIcon.anchor.set(0.5);
-    settingsIcon.position.set(0, -1);
+    const settingsIcon = new PIXI.Graphics();
+    settingsIcon.beginFill(0x8D6E63); // 与描边同色系的深棕
+    settingsIcon.drawRoundedRect(-8, -6, 16, 2.5, 1);
+    settingsIcon.drawRoundedRect(-8, -0.5, 16, 2.5, 1);
+    settingsIcon.drawRoundedRect(-8, 5, 16, 2.5, 1);
+    settingsIcon.endFill();
     settingsBtn.addChild(settingsBg, settingsIcon);
     settingsBtn.interactive = true;
     settingsBtn.buttonMode = true;
@@ -1377,147 +1462,22 @@ function initHomeScreen() {
     homeContainer.addChild(topBar);
 
     // b. 气泡字大标题
-    const titleContainer = new PIXI.Container();
+    const logoObjs = createPremiumLogoContainer();
+    const titleContainer = logoObjs.titleContainer;
     titleContainer.x = screenWidth / 2;
     titleContainer.y = screenHeight * 0.22;
 
-    const chars = ['奇', '趣', '果', '宝', '消'];
-    let currentX = -130; // 缩小间距，使得气泡字能有一点点互相重叠的感觉
-
-    const charNodes: { node: PIXI.Container, baseX: number, baseY: number, baseRot: number, phase: number }[] = [];
-
-    chars.forEach((char, i) => {
-        const charContainer = new PIXI.Container();
-
-        // 底部厚重阴影
-        const shadowText = new PIXI.Text(char, {
-            fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif',
-            fontSize: 70, fontWeight: '900', fill: '#4E2914',
-            stroke: '#4E2914', strokeThickness: 24, lineJoin: 'round'
-        });
-        shadowText.y = 6;
-
-        // 外圈深色描边
-        const outlineText = new PIXI.Text(char, {
-            fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif',
-            fontSize: 70, fontWeight: '900', fill: '#4E2914',
-            stroke: '#4E2914', strokeThickness: 24, lineJoin: 'round'
-        });
-
-        // 内圈白色描边
-        const whiteStroke = new PIXI.Text(char, {
-            fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif',
-            fontSize: 70, fontWeight: '900', fill: '#FFFFFF',
-            stroke: '#FFFFFF', strokeThickness: 10, lineJoin: 'round'
-        });
-
-        // 核心文字渐变
-        const mainText = new PIXI.Text(char, {
-            fontFamily: '"PingFang SC", "Helvetica Neue", Arial, sans-serif',
-            fontSize: 70, fontWeight: '900',
-            fill: ['#FF5252', '#FF9800'],
-            lineJoin: 'round'
-        });
-
-        [shadowText, outlineText, whiteStroke, mainText].forEach(t => {
-            t.anchor.set(0.5);
-            charContainer.addChild(t);
-        });
-
-        const baseX = currentX;
-        const baseY = (i % 2 === 0) ? -6 : 6;
-        const baseRot = (Math.random() - 0.5) * 0.2;
-
-        charContainer.x = baseX;
-        charContainer.y = baseY;
-        charContainer.rotation = baseRot;
-
-        titleContainer.addChild(charContainer);
-        charNodes.push({ node: charContainer, baseX, baseY, baseRot, phase: i * 0.8 });
-        currentX += 65; // 紧凑间距
-    });
-
-    // 缩放整个容器以适配屏幕，防止超出边界
     const maxTitleWidth = screenWidth * 0.85;
     const currentTitleWidth = 130 * 2 + 70 + 24; // 预估当前宽度
     const targetTitleScale = currentTitleWidth > maxTitleWidth ? maxTitleWidth / currentTitleWidth : 1;
     titleContainer.scale.set(targetTitleScale);
-
-    // 小星星与叶片装饰
-    const star1 = new PIXI.Text('⭐', { fontSize: 30 });
-    star1.position.set(110, -40);
-    star1.anchor.set(0.5);
-    titleContainer.addChild(star1);
-
-    const star2 = new PIXI.Text('✨', { fontSize: 24 });
-    star2.position.set(-140, 15);
-    star2.anchor.set(0.5);
-    titleContainer.addChild(star2);
-
-    const leaf1 = new PIXI.Text('🌸', { fontSize: 24 });
-    leaf1.position.set(-110, -35);
-    leaf1.anchor.set(0.5);
-    titleContainer.addChild(leaf1);
-
-    // 赛季标识牌 (小木牌)
-    const signContainer = new PIXI.Container();
-    signContainer.y = 65;
-
-    // 绳子
-    const ropes = new PIXI.Graphics();
-    ropes.lineStyle(4, 0x4E2914);
-    ropes.moveTo(-25, -25);
-    ropes.lineTo(-15, 0);
-    ropes.moveTo(25, -25);
-    ropes.lineTo(15, 0);
-    signContainer.addChild(ropes);
-
-    // 木板
-    const board = new PIXI.Graphics();
-    board.beginFill(0xCA9C7A);
-    board.lineStyle(4, 0x4E2914);
-    board.drawRoundedRect(-50, -15, 100, 30, 8);
-    board.endFill();
-    // 简单木纹
-    board.lineStyle(2, 0x8C5A35, 0.5);
-    board.moveTo(-30, -4); board.lineTo(30, -4);
-    board.moveTo(-40, 6); board.lineTo(20, 6);
-    signContainer.addChild(board);
-
-    // 文字
-    const seasonText = new PIXI.Text('S1 赛季', {
-        fontFamily: '"PingFang SC"', fontSize: 14, fill: '#FFFFFF', fontWeight: '900',
-        stroke: '#4E2914', strokeThickness: 4
-    });
-    seasonText.anchor.set(0.5);
-    signContainer.addChild(seasonText);
-
-    titleContainer.addChild(signContainer);
 
     // Dynamic Animation Loop
     let titleAnimTime = 0;
     app.ticker.add(() => {
         if (!homeContainer.visible) return;
         titleAnimTime += 0.05;
-
-        charNodes.forEach((c) => {
-            c.node.y = c.baseY + Math.sin(titleAnimTime + c.phase) * 5;
-            c.node.rotation = c.baseRot + Math.cos(titleAnimTime * 0.8 + c.phase) * 0.04;
-        });
-
-        star1.rotation = 0.3 + Math.sin(titleAnimTime * 1.5) * 0.2;
-        star1.scale.set(1 + Math.sin(titleAnimTime * 2) * 0.15);
-
-        star2.rotation = Math.cos(titleAnimTime * 1.2) * 0.2;
-        star2.scale.set(1 + Math.cos(titleAnimTime * 2.5) * 0.15);
-
-        leaf1.rotation = -0.5 + Math.sin(titleAnimTime * 0.8) * 0.1;
-
-        // S1赛季木牌也跟着轻轻摇摆
-        signContainer.rotation = Math.sin(titleAnimTime * 1.2) * 0.05;
-        signContainer.y = 65 + Math.cos(titleAnimTime * 1.5) * 2;
-
-        titleContainer.scale.set(targetTitleScale * (1 + Math.sin(titleAnimTime * 0.6) * 0.015));
+        updatePremiumLogoAnimation(logoObjs, titleAnimTime, targetTitleScale);
     });
 
     // 排行榜贴图更新
@@ -1675,8 +1635,8 @@ function initHomeScreen() {
         // 获取当前昵称和头像
         let nickname = '';
         try { nickname = wx.getStorageSync('playerNickname') || '匿名玩家'; } catch (e) { nickname = '匿名玩家'; }
-        
-        const EMOJIS = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔'];
+
+        const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔'];
         const getAvatarForName = (name: string) => {
             let hash = 0;
             for (let i = 0; i < name.length; i++) {
@@ -1687,12 +1647,12 @@ function initHomeScreen() {
 
         const profileContainer = new PIXI.Container();
         profileContainer.y = -100;
-        
+
         const profileBg = new PIXI.Graphics();
         profileBg.beginFill(0xF3F4F6); // 浅灰背景
         profileBg.drawRoundedRect(-panelW / 2 + 25, -25, panelW - 50, 50, 15);
         profileBg.endFill();
-        
+
         const avatarText = new PIXI.Text(getAvatarForName(nickname), { fontSize: 24 });
         avatarText.anchor.set(0.5);
         avatarText.position.set(-panelW / 2 + 55, 0);
@@ -1708,7 +1668,7 @@ function initHomeScreen() {
         nameText.anchor.set(0, 0.5);
         nameText.position.set(-panelW / 2 + 80, 0);
 
-        const editIcon = new PIXI.Text('✏️ 修改', {
+        const editIcon = new PIXI.Text('修改 >', {
             fontFamily: '"PingFang SC"', fontSize: 14, fill: '#8B5CF6', fontWeight: 'bold'
         });
         editIcon.anchor.set(1, 0.5);
@@ -2042,10 +2002,15 @@ interface GameTile extends PIXI.Container {
 
 const holdingArea: GameTile[] = [];
 const eliminatingTiles: GameTile[] = [];
+const DOCK_TILE_SCALE = 0.85;
+const SLOT_STEP = TILE_SIZE * 1.25;
+const SLOT_BG_WIDTH = TILE_SIZE * 1.15;
+const SLOT_BG_HEIGHT = TILE_SIZE * 1.3;
+const TILE_SLOT_OFFSET_Y = TILE_SIZE * -0.12;
 const HOLDING_SLOTS = 7;
-const HOLDING_START_X = (screenWidth - (HOLDING_SLOTS * (TILE_SIZE + TILE_MARGIN))) / 2 + TILE_SIZE / 2;
+const HOLDING_START_X = (screenWidth - (HOLDING_SLOTS * SLOT_STEP)) / 2 + SLOT_STEP / 2;
 const bottomSafe = sysInfo.safeArea ? sysInfo.safeArea.bottom : screenHeight;
-const HOLDING_START_Y = bottomSafe - TILE_SIZE / 2 - 40;
+const HOLDING_START_Y = bottomSafe - SLOT_BG_HEIGHT / 2 - 80;
 const tileContainer = new PIXI.Container();
 tileContainer.sortableChildren = true;
 
@@ -2369,6 +2334,8 @@ function renderShopScreen() {
     backBtn.buttonMode = true;
 
     const closeHandler = () => { shopContainer.visible = false; homeContainer.visible = true; };
+    overlay.on('pointerdown', closeHandler);
+    
     backBtn.on('pointerdown', () => { backBtn.scale.set(0.9); backBtn.alpha = 0.8; });
     backBtn.on('pointerup', () => { backBtn.scale.set(1); backBtn.alpha = 1; closeHandler(); });
     backBtn.on('pointerupoutside', () => { backBtn.scale.set(1); backBtn.alpha = 1; });
@@ -2773,7 +2740,7 @@ function initGameScreen() {
 
 
     // 计算底部槽位顶部的坐标
-    const slotBaseY = HOLDING_START_Y - TILE_SIZE / 2 - 10;
+    const slotBaseY = HOLDING_START_Y - SLOT_BG_HEIGHT / 2 - 10;
     // 半透明磨砂游戏底板，自适应屏幕高度，顶端固定，底部抵住槽位上方
     const boardBgStartY = screenHeight * 0.15;
     const boardBgHeight = slotBaseY - boardBgStartY - 15;
@@ -2789,27 +2756,27 @@ function initGameScreen() {
     // 移出区插槽底座 (放置提取出的方块)
     const extractBase = new PIXI.Graphics();
     extractBase.beginFill(0xFFFFFF, 0.45);
-    const extractWidth = 3 * (TILE_SIZE + TILE_MARGIN) + 12;
+    const extractWidth = 3 * SLOT_STEP + 12;
     const extractBaseY = screenHeight * 0.15 + 16 - 10;
-    extractBase.drawRoundedRect(screenWidth / 2 - extractWidth / 2, extractBaseY, extractWidth, TILE_SIZE + 20, 20);
+    extractBase.drawRoundedRect(screenWidth / 2 - extractWidth / 2, extractBaseY, extractWidth, SLOT_BG_HEIGHT + 20, 20);
     extractBase.endFill();
     extractBase.lineStyle(2, 0xFFFFFF, 0.8);
-    extractBase.drawRoundedRect(screenWidth / 2 - extractWidth / 2 + 2, extractBaseY + 2, extractWidth - 4, TILE_SIZE + 16, 18);
+    extractBase.drawRoundedRect(screenWidth / 2 - extractWidth / 2 + 2, extractBaseY + 2, extractWidth - 4, SLOT_BG_HEIGHT + 16, 18);
     gameContainer.addChild(extractBase);
 
-    const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + TILE_SIZE / 2;
-    const extractStartY = screenHeight * 0.15 + 16 + TILE_SIZE / 2;
+    const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + SLOT_STEP / 2;
+    const extractStartY = screenHeight * 0.15 + 16 + SLOT_BG_HEIGHT / 2;
 
     for (let i = 0; i < 3; i++) {
         const slot = new PIXI.Graphics();
         // 加深背景色并增加内边框，使槽位更加清晰可见
         slot.beginFill(0x000000, 0.15);
-        slot.drawRoundedRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE, 12);
+        slot.drawRoundedRect(-SLOT_BG_WIDTH / 2, -SLOT_BG_HEIGHT / 2, SLOT_BG_WIDTH, SLOT_BG_HEIGHT, 12);
         slot.endFill();
         slot.lineStyle(2, 0x000000, 0.15);
-        slot.drawRoundedRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE, 12);
+        slot.drawRoundedRect(-SLOT_BG_WIDTH / 2, -SLOT_BG_HEIGHT / 2, SLOT_BG_WIDTH, SLOT_BG_HEIGHT, 12);
 
-        slot.x = extractStartX + i * (TILE_SIZE + TILE_MARGIN);
+        slot.x = extractStartX + i * SLOT_STEP;
         slot.y = extractStartY;
         gameContainer.addChild(slot);
     }
@@ -2818,39 +2785,39 @@ function initGameScreen() {
 
     const slotBase = new PIXI.Graphics();
     slotBase.beginFill(0xFFFFFF, 0.45); // Glassmorphism translucent white
-    const slotWidth = HOLDING_SLOTS * (TILE_SIZE + TILE_MARGIN) + 12;
-    slotBase.drawRoundedRect(screenWidth / 2 - slotWidth / 2, HOLDING_START_Y - TILE_SIZE / 2 - 10, slotWidth, TILE_SIZE + 20, 20);
+    const slotWidth = HOLDING_SLOTS * SLOT_STEP + 12;
+    slotBase.drawRoundedRect(screenWidth / 2 - slotWidth / 2, HOLDING_START_Y - SLOT_BG_HEIGHT / 2 - 10, slotWidth, SLOT_BG_HEIGHT + 20, 20);
     slotBase.endFill();
     // Glass highlight
     slotBase.lineStyle(2, 0xFFFFFF, 0.8);
-    slotBase.drawRoundedRect(screenWidth / 2 - slotWidth / 2 + 2, HOLDING_START_Y - TILE_SIZE / 2 - 8, slotWidth - 4, TILE_SIZE + 16, 18);
+    slotBase.drawRoundedRect(screenWidth / 2 - slotWidth / 2 + 2, HOLDING_START_Y - SLOT_BG_HEIGHT / 2 - 8, slotWidth - 4, SLOT_BG_HEIGHT + 16, 18);
     gameContainer.addChild(slotBase);
 
     for (let i = 0; i < HOLDING_SLOTS; i++) {
         const slot = new PIXI.Graphics();
         // 同样加深主槽位的清晰度
         slot.beginFill(0x000000, 0.15);
-        slot.drawRoundedRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE, 12);
+        slot.drawRoundedRect(-SLOT_BG_WIDTH / 2, -SLOT_BG_HEIGHT / 2, SLOT_BG_WIDTH, SLOT_BG_HEIGHT, 12);
         slot.endFill();
         slot.lineStyle(2, 0x000000, 0.15);
-        slot.drawRoundedRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE, 12);
+        slot.drawRoundedRect(-SLOT_BG_WIDTH / 2, -SLOT_BG_HEIGHT / 2, SLOT_BG_WIDTH, SLOT_BG_HEIGHT, 12);
 
-        slot.x = HOLDING_START_X + i * (TILE_SIZE + TILE_MARGIN);
+        slot.x = HOLDING_START_X + i * SLOT_STEP;
         slot.y = HOLDING_START_Y;
         gameContainer.addChild(slot);
     }
 
     // 道具栏 (撤销, 移出, 洗牌)
     const propsContainer = new PIXI.Container();
-    propsContainer.y = HOLDING_START_Y + TILE_SIZE / 2 + 35;
+    propsContainer.y = HOLDING_START_Y + SLOT_BG_HEIGHT / 2 + 45;
 
     const btnWidth = 80;
     const btnSpacing = (screenWidth - btnWidth * 4) / 5;
 
-    const btnRestart = createPropButton('重置', '🔄', btnSpacing + btnWidth / 2);
-    btnUndoGlobal = createPropButton('撤销', '↩️', btnSpacing * 2 + btnWidth * 1.5, playerData.props.undo);
-    btnExtractGlobal = createPropButton('移出', '⬆️', btnSpacing * 3 + btnWidth * 2.5, playerData.props.extract);
-    btnShuffleGlobal = createPropButton('洗牌', '🔀', btnSpacing * 4 + btnWidth * 3.5, playerData.props.shuffle);
+    const btnRestart = createPropButton('重置', '', btnSpacing + btnWidth / 2);
+    btnUndoGlobal = createPropButton('撤销', '', btnSpacing * 2 + btnWidth * 1.5, playerData.props.undo);
+    btnExtractGlobal = createPropButton('移出', '', btnSpacing * 3 + btnWidth * 2.5, playerData.props.extract);
+    btnShuffleGlobal = createPropButton('洗牌', '', btnSpacing * 4 + btnWidth * 3.5, playerData.props.shuffle);
 
     propsContainer.addChild(btnRestart, btnUndoGlobal, btnExtractGlobal, btnShuffleGlobal);
     gameContainer.addChild(propsContainer);
@@ -2887,16 +2854,19 @@ function initGameScreen() {
             const index = holdingArea.indexOf(tile);
             if (index === -1 || tile.tileState === 'eliminating') return;
 
-            const targetX = HOLDING_START_X + index * (TILE_SIZE + TILE_MARGIN);
-            const targetY = HOLDING_START_Y;
+            const targetX = HOLDING_START_X + index * SLOT_STEP;
+            const targetY = HOLDING_START_Y + TILE_SLOT_OFFSET_Y;
 
-            if (Math.abs(tile.x - targetX) > 1 || Math.abs(tile.y - targetY) > 1) {
+            if (Math.abs(tile.x - targetX) > 1 || Math.abs(tile.y - targetY) > 1 || Math.abs(tile.scale.x - DOCK_TILE_SCALE) > 0.05) {
                 tile.x += (targetX - tile.x) * 0.3;
                 tile.y += (targetY - tile.y) * 0.3;
+                tile.scale.x += (DOCK_TILE_SCALE - tile.scale.x) * 0.3;
+                tile.scale.y += (DOCK_TILE_SCALE - tile.scale.y) * 0.3;
                 tile.tileState = 'moving';
             } else {
                 tile.x = targetX;
                 tile.y = targetY;
+                tile.scale.set(DOCK_TILE_SCALE);
                 if (tile.tileState === 'moving') {
                     tile.tileState = 'slot';
                     checkMatch();
@@ -3031,9 +3001,9 @@ function loadLevel(level: number) {
 
     // 计算中心对齐
     // 顶部避让区：确保不与上方的 extractedSlots 产生重叠
-    const topBoundary = screenHeight * 0.15 + 16 + TILE_SIZE + 25;
+    const topBoundary = screenHeight * 0.15 + 16 + SLOT_BG_HEIGHT + 25;
     // 底部避让区：严格贴合半透明磨砂底板的内部
-    const slotBaseY = HOLDING_START_Y - TILE_SIZE / 2 - 10;
+    const slotBaseY = HOLDING_START_Y - SLOT_BG_HEIGHT / 2 - 10;
     const boardBgBottomY = slotBaseY - 15;
     const bottomBoundary = boardBgBottomY - 15;
     const playAreaHeight = bottomBoundary - topBoundary;
@@ -3685,7 +3655,7 @@ function createPropButton(name: string, icon: string, x: number, count?: number)
         fontFamily: '"PingFang SC"', fontSize: 13, fill: '#333333', fontWeight: 'bold'
     });
     label.anchor.set(0.5);
-    label.position.set(12, 0);
+    label.position.set(icon ? 12 : 0, 0);
 
     btn.addChild(bg, iconText, label);
 
@@ -3791,12 +3761,12 @@ function performUndo() {
                 tileContainer.addChild(tile);
                 tile.tileState = 'grid';
 
-                const extractWidth = 3 * (TILE_SIZE + TILE_MARGIN) + 12;
-                const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + TILE_SIZE / 2;
-                const extractStartY = screenHeight * 0.15 + 16 + TILE_SIZE / 2;
+                const extractWidth = 3 * SLOT_STEP + 12;
+                const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + SLOT_STEP / 2;
+                const extractStartY = screenHeight * 0.15 + 16 + SLOT_BG_HEIGHT / 2;
 
-                tile.x = extractStartX + record.slotIndex! * (TILE_SIZE + TILE_MARGIN);
-                tile.y = extractStartY;
+                tile.x = extractStartX + record.slotIndex! * SLOT_STEP;
+                tile.y = extractStartY + TILE_SLOT_OFFSET_Y;
                 tile.zIndex = 999999;
             } else {
                 // 恢复盲盒状态
@@ -3819,6 +3789,7 @@ function performUndo() {
 
                 tileContainer.addChild(tile);
                 tile.tileState = 'grid';
+                tile.scale.set(1); // 恢复原大小
                 tile.x = tile.tileData.renderX!;
                 tile.y = tile.tileData.renderY!;
                 tile.zIndex = tile.tileData.z * 10000 + tile.tileData.y * 100 + tile.tileData.x;
@@ -3862,9 +3833,9 @@ function performExtract() {
     const countToExtract = Math.min(3, holdingArea.length, emptySlotIndices.length);
     const toExtract = holdingArea.splice(0, countToExtract);
 
-    const extractWidth = 3 * (TILE_SIZE + TILE_MARGIN) + 12;
-    const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + TILE_SIZE / 2;
-    const extractStartY = screenHeight * 0.15 + 16 + TILE_SIZE / 2;
+    const extractWidth = 3 * SLOT_STEP + 12;
+    const extractStartX = screenWidth / 2 - extractWidth / 2 + 6 + SLOT_STEP / 2;
+    const extractStartY = screenHeight * 0.15 + 16 + SLOT_BG_HEIGHT / 2;
 
     toExtract.forEach((t, idx) => {
         const slotIndex = emptySlotIndices[idx];
@@ -3874,8 +3845,9 @@ function performExtract() {
         t.tileState = 'grid';
 
         // 提取到移出区时，保持原有的 tileData 不变，以便撤回时能恢复位置
-        t.x = extractStartX + slotIndex * (TILE_SIZE + TILE_MARGIN);
-        t.y = extractStartY;
+        t.x = extractStartX + slotIndex * SLOT_STEP;
+        t.y = extractStartY + TILE_SLOT_OFFSET_Y;
+        t.scale.set(DOCK_TILE_SCALE);
         t.zIndex = 999999;
 
         t.interactive = true;
@@ -3922,6 +3894,196 @@ function performShuffle() {
     wx.showToast({ title: '洗牌成功', icon: 'none' });
 }
 
-initHomeScreen();
-initGameScreen();
-updateGlobalBackground(false); // 确保一开始就加载装备的背景
+// ================= 启动逻辑 =================
+const loadingContainer = new PIXI.Container();
+app.stage.addChild(loadingContainer);
+
+const loadingBg = new PIXI.Graphics();
+// Draw a soft vertical gradient from sky blue to light cyan
+const steps = 40;
+for (let i = 0; i < steps; i++) {
+    const ratio = i / steps;
+    const r = Math.round(0x87 + (0xE0 - 0x87) * ratio);
+    const g = Math.round(0xCE + (0xFF - 0xCE) * ratio);
+    const b = Math.round(0xFA + (0xFF - 0xFA) * ratio);
+    const color = (r << 16) | (g << 8) | b;
+    loadingBg.beginFill(color);
+    loadingBg.drawRect(0, (i / steps) * screenHeight, screenWidth, (screenHeight / steps) + 2);
+    loadingBg.endFill();
+}
+loadingContainer.addChild(loadingBg);
+
+// Add some soft decorative floating clouds (circles)
+const decorContainer = new PIXI.Container();
+const decorCircles: { sprite: PIXI.Graphics, phase: number, speed: number }[] = [];
+for (let i = 0; i < 6; i++) {
+    const circle = new PIXI.Graphics();
+    circle.beginFill(0xFFFFFF, 0.3 + Math.random() * 0.3); // Semi-transparent white
+    circle.drawCircle(0, 0, 40 + Math.random() * 60);
+    circle.endFill();
+    circle.x = Math.random() * screenWidth;
+    circle.y = Math.random() * screenHeight;
+    decorContainer.addChild(circle);
+    decorCircles.push({ sprite: circle, phase: Math.random() * Math.PI * 2, speed: 0.005 + Math.random() * 0.01 });
+}
+loadingContainer.addChild(decorContainer);
+
+// Premium Multi-Layered Candy Logo (Imported from home screen logic)
+const logoObjs = createPremiumLogoContainer();
+const logoContainer = logoObjs.titleContainer;
+logoContainer.position.set(screenWidth / 2, screenHeight * 0.2);
+
+const maxLogoWidth = screenWidth * 0.85;
+const currentLogoWidth = 130 * 2 + 70 + 24;
+const targetLogoScale = currentLogoWidth > maxLogoWidth ? maxLogoWidth / currentLogoWidth : 1;
+logoContainer.scale.set(targetLogoScale);
+
+loadingContainer.addChild(logoContainer);
+
+// Center illustration
+const loadingArtTexture = PIXI.Texture.from(loadingArtBase64);
+const loadingArtSprite = new PIXI.Sprite(loadingArtTexture);
+loadingArtSprite.anchor.set(0.5);
+// Scale logic will wait for texture to load
+loadingArtSprite.position.set(screenWidth / 2, screenHeight * 0.45);
+loadingContainer.addChild(loadingArtSprite);
+
+// Dynamic animation for the loading art
+let baseScale = 0;
+if (loadingArtTexture.valid) {
+    baseScale = (screenWidth * 0.6) / loadingArtTexture.frame.width;
+    loadingArtSprite.scale.set(baseScale);
+} else {
+    loadingArtSprite.visible = false;
+    loadingArtTexture.baseTexture.once('loaded', () => {
+        baseScale = (screenWidth * 0.6) / loadingArtTexture.frame.width;
+        loadingArtSprite.scale.set(baseScale);
+        loadingArtSprite.visible = true;
+    });
+}
+const baseY = screenHeight * 0.45;
+let animTime = 0;
+const floatAnimation = (delta: number) => {
+    animTime += delta * 0.05;
+    
+    // Animate illustration (subtle breathing bounce)
+    loadingArtSprite.y = baseY + Math.sin(animTime) * 6;
+    const currentScale = baseScale * (1 + Math.cos(animTime * 1.5) * 0.03);
+    loadingArtSprite.scale.set(currentScale);
+    
+    // Animate premium logo (reusing home screen logic)
+    updatePremiumLogoAnimation(logoObjs, animTime * 1.5, targetLogoScale);
+
+    // Animate background clouds
+    decorCircles.forEach(cloud => {
+        cloud.sprite.x += Math.cos(animTime * 0.2 + cloud.phase) * 0.5;
+        cloud.sprite.y += Math.sin(animTime * 0.3 + cloud.phase) * 0.3;
+        cloud.sprite.alpha = 0.5 + Math.sin(animTime * 0.5 + cloud.phase) * 0.2;
+    });
+};
+app.ticker.add(floatAnimation);
+
+// Progress Bar
+const barWidth = screenWidth * 0.7; // Slightly shorter for elegance
+const barHeight = 24;
+
+const progressBg = new PIXI.Graphics();
+// Clean semi-transparent dark pill background
+progressBg.beginFill(0x000000, 0.2); 
+progressBg.drawRoundedRect(-barWidth / 2, 0, barWidth, barHeight, barHeight / 2);
+progressBg.endFill();
+// Subtle outer white stroke for premium feel
+progressBg.lineStyle(3, 0xFFFFFF, 0.9);
+progressBg.drawRoundedRect(-barWidth / 2, 0, barWidth, barHeight, barHeight / 2);
+progressBg.position.set(screenWidth / 2, screenHeight * 0.75);
+
+const progressBar = new PIXI.Graphics();
+progressBar.position.set(screenWidth / 2, screenHeight * 0.75);
+
+loadingContainer.addChild(progressBg, progressBar);
+
+const loadingSubText = new PIXI.Text('正在准备精彩关卡...', {
+    fontFamily: '"PingFang SC", "Microsoft YaHei", sans-serif',
+    fontSize: 16,
+    fill: '#FFFFFF', // Clean white
+    fontWeight: 'bold',
+    dropShadow: true,
+    dropShadowColor: '#000000',
+    dropShadowDistance: 2,
+    dropShadowBlur: 4,
+    dropShadowAlpha: 0.3
+});
+loadingSubText.anchor.set(0.5);
+loadingSubText.position.set(screenWidth / 2, screenHeight * 0.75 + 40);
+loadingContainer.addChild(loadingSubText);
+
+const advisoryText = new PIXI.Text('《健康游戏忠告》\n抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。\n适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。', {
+    fontFamily: '"PingFang SC"',
+    fontSize: 10,
+    fill: '#999999',
+    align: 'center',
+    lineHeight: 16
+});
+advisoryText.anchor.set(0.5, 1);
+advisoryText.position.set(screenWidth / 2, screenHeight - 40);
+loadingContainer.addChild(advisoryText);
+
+const basesToLoad = [
+    loadingArtTexture.baseTexture,
+    homeBgTexture.baseTexture,
+    ...themeTextures.map(t => t.baseTexture),
+    ...Object.values(tileSkinTextures).map(t => t.baseTexture),
+    fruitBase, catBase, dessertBase,
+    fruitBase2, catBase2, dessertBase2,
+    oceanBase, oceanBase2,
+    carBase, carBase2,
+    animalBase, animalBase2
+];
+
+const uniqueBases = Array.from(new Set(basesToLoad));
+let loadedCount = 0;
+const MIN_LOADING_TIME = 0; // No artificial delay
+const loadingStartTime = Date.now();
+
+function checkLoadingComplete() {
+    loadedCount++;
+    const progressRatio = loadedCount / uniqueBases.length;
+    
+    progressBar.clear();
+    if (progressRatio > 0.02) {
+        const padding = 3;
+        let innerW = Math.max(barHeight - padding * 2, (barWidth - padding * 2) * progressRatio);
+        const innerH = barHeight - padding * 2;
+        const startX = -barWidth / 2 + padding;
+        const startY = padding;
+        
+        // Single vibrant, beautiful amber pill
+        progressBar.beginFill(0xFFC107); // Vibrant bright amber/yellow
+        progressBar.drawRoundedRect(startX, startY, innerW, innerH, innerH / 2);
+        progressBar.endFill();
+    }
+    
+    if (loadedCount === uniqueBases.length) {
+        const timeElapsed = Date.now() - loadingStartTime;
+        const delay = Math.max(0, MIN_LOADING_TIME - timeElapsed);
+        
+        setTimeout(() => {
+            app.ticker.remove(floatAnimation);
+            app.stage.removeChild(loadingContainer);
+            loadingContainer.destroy({ children: true });
+            
+            initHomeScreen();
+            initGameScreen();
+            updateGlobalBackground(false);
+        }, delay);
+    }
+}
+
+uniqueBases.forEach(base => {
+    if (base.valid) {
+        checkLoadingComplete();
+    } else {
+        base.once('loaded', checkLoadingComplete);
+        base.once('error', checkLoadingComplete);
+    }
+});

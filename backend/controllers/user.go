@@ -37,7 +37,24 @@ func SyncUserData(db *gorm.DB) gin.HandlerFunc {
 		req.UpdatedAt = time.Now()
 
 		if db != nil {
-			db.Save(&req)
+			var existing models.User
+			err := db.Where("openid = ?", openID).First(&existing).Error
+			if err == nil {
+				// 记录存在，更新字段
+				existing.Coins = req.Coins
+				existing.Level = req.Level
+				existing.PropsJSON = req.PropsJSON
+				existing.UnlockedJSON = req.UnlockedJSON
+				existing.EquippedJSON = req.EquippedJSON
+				existing.SettingsJSON = req.SettingsJSON
+				existing.CheckInDate = req.CheckInDate
+				existing.CheckInStreak = req.CheckInStreak
+				existing.UpdatedAt = req.UpdatedAt
+				db.Save(&existing)
+			} else {
+				// 记录不存在，创建新记录
+				db.Create(&req)
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "success"})
 	}
