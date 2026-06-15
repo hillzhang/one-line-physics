@@ -88,7 +88,7 @@ function getOffsetDateInfo(offset: number) {
     else if (offset === -2) label = '前天';
 
     return {
-        key: `daily_score_${yyyy}${mm}${dd}`,
+        key: `daily_score_${yyyy}-${mm}-${dd}`,
         label: label
     };
 }
@@ -263,7 +263,7 @@ const TILE_MARGIN = 2; // 增加间距，让方块不要粘连
 const TILE_STEP_X = TILE_SIZE + TILE_MARGIN;
 const TILE_STEP_Y = TILE_SIZE + 4 + TILE_MARGIN; // Y轴步长必须大于 TILE_SIZE，防止下一行盖住上一行的 3D 厚度
 const LAYER_OFFSET_X = 0;
-const LAYER_OFFSET_Y = -10; // 强烈往上偏移产生明显的立体层叠高度！
+const LAYER_OFFSET_Y = -4; // 适当往上偏移产生立体层叠高度，避免缝隙过大产生悬空感
 
 // 基础网格起始 Y
 const GRID_START_Y = screenHeight * 0.28;
@@ -282,7 +282,11 @@ interface PlayerData {
     checkInStreak: number;
     adDate?: string;
     adCount?: number;
+    shareDate?: string;
+    shareCount?: number;
     settings: { bgm: boolean; sfx: boolean; vibration: boolean; };
+    unlockedItems: string[];
+    lastUpdated: number;
 }
 let playerData: PlayerData = {
     coins: 200, // 初始送一些金币
@@ -295,11 +299,18 @@ let playerData: PlayerData = {
     checkInStreak: 0,
     adDate: '',
     adCount: 0,
-    settings: { bgm: true, sfx: true, vibration: true }
+    settings: { bgm: true, sfx: true, vibration: true },
+    unlockedItems: [],
+    lastUpdated: 0
 };
 
 try {
-    const saved = wx.getStorageSync('playerData');
+    let saved;
+    if (typeof wx !== 'undefined') {
+        saved = wx.getStorageSync('playerData');
+    } else if (typeof localStorage !== 'undefined') {
+        saved = localStorage.getItem('playerData');
+    }
     if (saved) {
         playerData = JSON.parse(saved);
         if (!playerData.props) playerData.props = { undo: 3, extract: 3, shuffle: 3 };
@@ -307,12 +318,25 @@ try {
         if (playerData.checkInDate === undefined) playerData.checkInDate = '';
         if (playerData.checkInStreak === undefined) playerData.checkInStreak = 0;
         if (!playerData.settings) playerData.settings = { bgm: true, sfx: true, vibration: true };
+        if (!playerData.unlockedItems) playerData.unlockedItems = [];
+        if (!playerData.gameClubDate) playerData.gameClubDate = '';
+        if (!playerData.lastUpdated) playerData.lastUpdated = 0;
         if (!playerData.unlocked.bgs.includes('bg6')) playerData.unlocked.bgs.push('bg6');
         if (!playerData.unlocked.bgs.includes('bg7')) playerData.unlocked.bgs.push('bg7');
     }
 } catch (e) { }
 
 if (typeof wx !== 'undefined' && wx.cloud) {
+    // 开启微信右上角分享和转发功能
+    if (wx.showShareMenu) {
+        wx.showShareMenu({ withShareTicket: true, menus: ['shareAppMessage', 'shareTimeline'] });
+    }
+    if (wx.onShareAppMessage) {
+        wx.onShareAppMessage(() => ({
+            title: '奇趣果宝消太好玩了，快来和我一起挑战最强关卡！'
+        }));
+    }
+
     wx.cloud.init({ env: 'prod-d5gnecgcl8574e82a', traceUser: true });
 
     // 异步拉取云端存档
@@ -324,10 +348,15 @@ if (typeof wx !== 'undefined' && wx.cloud) {
         success: (res: any) => {
             if (res.statusCode === 200 && res.data) {
                 const cloudData = res.data;
-                // 如果云端进度大于本地，或者本地全新，则覆盖本地
-                if (cloudData.level > playerData.level || (playerData.level === 1 && cloudData.level > 0)) {
+                const cloudTime = cloudData.lastUpdated || 0;
+                const localTime = playerData.lastUpdated || 0;
+                const cloudIsNewer = cloudTime > localTime;
+
+                // 如果云端的更新时间较新，或者云端关卡大于本地，或者本地全新，则覆盖本地
+                if (cloudIsNewer || cloudData.level > playerData.level || (playerData.level === 1 && cloudData.level > 0)) {
                     playerData.level = cloudData.level || 1;
                     playerData.coins = cloudData.coins || 0;
+                    if (cloudTime > 0) playerData.lastUpdated = cloudTime;
 
                     if (cloudData.unlocked && cloudData.unlocked.trim() !== '') {
                         try {
@@ -424,7 +453,12 @@ const checkAndWatchAd = (onSuccess: () => void) => {
 };
 
 const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) => {
-    try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
+    playerData.lastUpdated = Date.now();
+    try {
+        const dataStr = JSON.stringify(playerData);
+        if (typeof wx !== 'undefined') wx.setStorageSync('playerData', dataStr);
+        else if (typeof localStorage !== 'undefined') localStorage.setItem('playerData', dataStr);
+    } catch (e) { }
     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
 
     if (typeof wx !== 'undefined' && wx.setUserCloudStorage) {
@@ -472,9 +506,10 @@ const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) =>
         } catch (e) { }
 
         if (!nickname || nickname.startsWith('玩家_')) {
-            const adjs = ['快乐的', '调皮的', '聪明的', '勇敢的', '懒惰的', '迷人的', '神秘的', '幸运的', '憨厚的', '机智的', '可爱的', '酷酷的', '贪吃的', '无敌的', '呆萌的'];
-            const nouns = ['小猫', '小狗', '狮子', '熊猫', '兔子', '狐狸', '考拉', '猴子', '老虎', '企鹅', '大象', '海豚', '仓鼠', '水豚', '海豹'];
-            nickname = adjs[Math.floor(Math.random() * adjs.length)] + nouns[Math.floor(Math.random() * nouns.length)];
+            const adjs = ['快乐的', '调皮的', '聪明的', '勇敢的', '懒惰的', '迷人的', '神秘的', '幸运的', '憨厚的', '机智的', '可爱的', '酷酷的', '贪吃的', '无敌的', '呆萌的', '佛系的', '高冷的', '傲娇的', '热血的', '安静的', '疯狂的', '无聊的', '勤奋的', '胖胖的', '圆圆的', '软萌的', '优雅的', '暴躁的', '戏精', '吃货', '野生', '摸鱼的', '秃头的', '打工的', '文艺的'];
+            const nouns = ['小猫', '小狗', '狮子', '熊猫', '兔子', '狐狸', '考拉', '猴子', '老虎', '企鹅', '大象', '海豚', '仓鼠', '水豚', '海豹', '柴犬', '橘猫', '柯基', '二哈', '萨摩耶', '羊驼', '水獭', '浣熊', '土拨鼠', '修勾', '猫咪', '小熊', '锦鲤', '海鸥', '松鼠', '树懒', '刺猬', '恐龙', '独角兽', '咸鱼'];
+            const randomNum = Math.floor(Math.random() * 900) + 100; // 100~999
+            nickname = adjs[Math.floor(Math.random() * adjs.length)] + nouns[Math.floor(Math.random() * nouns.length)] + randomNum;
             try {
                 wx.setStorageSync('playerNickname', nickname);
                 wx.setStorageSync('isNicknameAutoGenerated', true);
@@ -486,11 +521,12 @@ const savePlayerData = (mode: 'main' | 'daily' = 'main', scoreValue?: number) =>
             finalScore = scoreValue;
         }
 
-        submitToGlobalLeaderboard(nickname, mode, finalScore);
+        let finalMode = mode === 'daily' ? `daily_${getTodayString()}` : mode;
+        submitToGlobalLeaderboard(nickname, finalMode, finalScore);
     }
 }
 
-const submitToGlobalLeaderboard = (name: string, mode: 'main' | 'daily' = 'main', score: number = 0) => {
+const submitToGlobalLeaderboard = (name: string, mode: string = 'main', score: number = 0) => {
     wx.cloud.callContainer({
         config: { env: 'prod-d5gnecgcl8574e82a' },
         path: '/api/leaderboard/submit',
@@ -642,7 +678,16 @@ function updateGlobalBackground(isGameActive = false, level = 1) {
     // 进入游戏后，才会应用玩家在商城里装备的皮肤
     const equippedBg = SHOP_ITEMS.bgs.find((b: any) => b.id === playerData.equipped.bg) || SHOP_ITEMS.bgs[0];
     if (equippedBg.id === 'auto') {
-        bgSprite.texture = themeTextures[(level - 1) % themeTextures.length];
+        let index = 0;
+        if (level > 0) {
+            index = (level - 1) % themeTextures.length;
+        } else {
+            // 每日擂台：根据当天日期生成背景
+            const d = new Date();
+            const dateSeed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+            index = dateSeed % themeTextures.length;
+        }
+        bgSprite.texture = themeTextures[index];
     } else {
         const bgIndex = ['bg1', 'bg2', 'bg3', 'bg4', 'bg5', 'bg6', 'bg7'].indexOf(equippedBg.id);
         if (bgIndex !== -1) bgSprite.texture = themeTextures[bgIndex];
@@ -832,9 +877,16 @@ const updateRankUI = () => {
 
     if (currentRankScope === 'global') {
         if (sharedSpriteRef) sharedSpriteRef.visible = false;
-        dateSelectorContainer.visible = false;
         globalRankListContainer.visible = true;
-        fetchAndRenderGlobalRank(currentRankMode);
+
+        if (currentRankMode === 'daily') {
+            dateSelectorContainer.visible = true;
+            dailyRankOffset = 0;
+            updateDateSelector();
+        } else {
+            dateSelectorContainer.visible = false;
+            fetchAndRenderGlobalRank('main');
+        }
 
         if (!hasPromptedNickname) {
             let nickname = '';
@@ -856,7 +908,13 @@ const updateRankUI = () => {
                             wx.setStorageSync('playerNickname', newName);
                             wx.setStorageSync('isNicknameAutoGenerated', false);
                             savePlayerData(); // 保存并上报
-                            setTimeout(() => fetchAndRenderGlobalRank(currentRankMode), 500);
+                            setTimeout(() => {
+                                if (currentRankMode === 'main') {
+                                    fetchAndRenderGlobalRank('main');
+                                } else {
+                                    updateDateSelector();
+                                }
+                            }, 500);
                         }
                     }
                 });
@@ -999,13 +1057,17 @@ const updateDateSelector = () => {
     nextBtn.alpha = dailyRankOffset >= 0 ? 0.3 : 1.0;
     prevBtn.alpha = dailyRankOffset <= -29 ? 0.3 : 1.0;
 
-    if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
-        wx.getOpenDataContext().postMessage({
-            type: 'showLeaderboard',
-            scoreKey: info.key,
-            formatType: 'time',
-            title: `🏆 ${info.label}排行榜` // 动态更新标题
-        });
+    if (currentRankScope === 'global') {
+        fetchAndRenderGlobalRank(info.key.replace('daily_score_', 'daily_'));
+    } else {
+        if (typeof wx !== 'undefined' && typeof wx.getOpenDataContext === 'function') {
+            wx.getOpenDataContext().postMessage({
+                type: 'showLeaderboard',
+                scoreKey: info.key,
+                formatType: 'time',
+                title: `🏆 ${info.label}排行榜` // 动态更新标题
+            });
+        }
     }
 };
 
@@ -1048,7 +1110,7 @@ globalRankListContainer.position.set(screenWidth * 0.1, rankTopY + 110);
 globalRankListContainer.visible = false; // 初始隐藏
 rankContainer.addChild(globalRankListContainer);
 
-function fetchAndRenderGlobalRank(mode: 'main' | 'daily') {
+function fetchAndRenderGlobalRank(mode: string) {
     globalRankListContainer.removeChildren();
     const loadingText = new PIXI.Text('加载中...', { fill: '#FFFFFF', fontSize: 16 });
     globalRankListContainer.addChild(loadingText);
@@ -1100,7 +1162,7 @@ function fetchAndRenderGlobalRank(mode: 'main' | 'daily') {
                         nameText.position.set(85, 20);
 
                         let scoreDisplay = `${player.score} 关`;
-                        if (mode === 'daily') {
+                        if (mode.startsWith('daily')) {
                             let totalSeconds = player.score;
                             let min = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
                             let sec = (totalSeconds % 60).toString().padStart(2, '0');
@@ -1414,8 +1476,21 @@ gcLinkTxt.buttonMode = true;
 gameClubPanel.addChild(gcLinkTxt);
 
 let gameCirclePageManager: any = null;
+let pendingGameClubReward: (() => void) | null = null;
 
-const openGameClubFeature = () => {
+// 监听从游戏圈或后台返回时，发放积压的奖励
+if (typeof wx !== 'undefined' && wx.onShow) {
+    wx.onShow(() => {
+        if (pendingGameClubReward) {
+            setTimeout(() => {
+                if (pendingGameClubReward) pendingGameClubReward();
+                pendingGameClubReward = null;
+            }, 500); // 稍微延迟一下，体验更好
+        }
+    });
+}
+
+const openGameClubFeature = (onSuccess?: () => void) => {
     if (typeof wx !== 'undefined') {
         if (wx.createPageManager) {
             const openlink = '-SSEykJvFV3pORt5kTNpS9Vql7BfqGfEBffsdkin54TRdWJUtpmtKsclGBBv1pgh8bSTVLd38SXwxzdbqhjEwuOL6w7FbM3wvZCAWz-QLHNzdgrR1KFO4QzsR17cPvZKMhG8LCVucMuST6Bx1gaajz6C7cj3AWC34zpRM3K775-utHf36Mw-95-tLf6CDmStpDqtugeA7FhBA2d9nsUbkI6AltDramvRK4slDqfd1Pnlq3MQE6bjvDMsCGz2Ui0JfzTHwEqzZrF7vEKAq-yD8gwhqfCmSb54M6XeLTY1e6hGjJTkNMFaCcncgEwm_K29ZFNHcBXpG_V7kFz3CfOmeA';
@@ -1424,6 +1499,8 @@ const openGameClubFeature = () => {
             }
             gameCirclePageManager.load({ openlink }).then(() => {
                 gameCirclePageManager.show();
+                // 成功拉起后，将发奖逻辑挂载到“从后台返回”的回调中
+                if (onSuccess) pendingGameClubReward = onSuccess;
             }).catch((err: any) => {
                 console.error('游戏圈失败', err);
                 wx.showToast({ title: '打开游戏圈失败', icon: 'none' });
@@ -1431,6 +1508,9 @@ const openGameClubFeature = () => {
         } else {
             wx.showToast({ title: '请在微信真机上体验游戏圈', icon: 'none' });
         }
+    } else {
+        // 非微信环境直接发奖
+        if (onSuccess) onSuccess();
     }
 };
 
@@ -1439,23 +1519,23 @@ btnJoinGc.on('pointerdown', () => {
     const hasRewardToday = playerData.gameClubDate === today;
 
     if (!hasRewardToday) {
-        playerData.coins += 50;
-        playerData.gameClubDate = today;
-        savePlayerData();
-        if (coinTextObj) coinTextObj.text = playerData.coins.toString();
-        wx.showToast({ title: '获得 50 金币！', icon: 'none' });
+        // 先拉起游戏圈，成功后再发奖励
+        openGameClubFeature(() => {
+            playerData.coins += 50;
+            playerData.gameClubDate = today;
+            savePlayerData();
+            if (coinTextObj) coinTextObj.text = playerData.coins.toString();
+            wx.showToast({ title: '获得 50 金币！', icon: 'none' });
 
-        // 刷新按钮状态
-        gcJoinBg.clear();
-        gcJoinBg.beginFill(0x9CA3AF);
-        gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
-        gcJoinBg.endFill();
-        gcJoinTxt.text = '已领取';
-        btnJoinGc.interactive = false;
-        btnJoinGc.buttonMode = false;
-        
-        // 发放奖励的同时，强制拉起游戏圈
-        openGameClubFeature();
+            // 刷新按钮状态
+            gcJoinBg.clear();
+            gcJoinBg.beginFill(0x9CA3AF);
+            gcJoinBg.drawRoundedRect(-70, -25, 140, 50, 25);
+            gcJoinBg.endFill();
+            gcJoinTxt.text = '已领取';
+            btnJoinGc.interactive = false;
+            btnJoinGc.buttonMode = false;
+        });
     }
 });
 
@@ -1675,13 +1755,17 @@ function initHomeScreen() {
             '1. 点击上方图案放入底部的暂存槽，凑齐3个相同即可消除。',
             '2. 暂存槽最多放7个，满了则失败。注意下方被遮挡的图案，合理规划。',
             '【特殊方块】',
-            '3. ❄️ 冰冻：放入暂存槽后，需通过合成同类方块来消除外层冰块。',
+            '3. 🧊 冰冻：放入暂存槽后，需通过合成同类方块来消除外层冰块。',
             '4. 💣 炸弹：必须在倒计时（点击步数）结束前消除，否则失败。',
             '【游戏模式】',
-            '5. 🏆 主线：逐级挑战，难度逐渐上升，通关可获得金币。',
-            '6. ⚔️ 擂台：每天随机生成高难度关卡，挑战极限！',
+            '5. 🏆 主线：逐级挑战，难度逐渐上升，过关不奖金币。',
+            '6. 🥊 擂台：每天随机生成高难度关卡，挑战极限！',
+            '【获取金币】',
+            '7. 擂台奖励：挑战擂台成功可获得 100 金币。',
+            '8. 每日签到：首页点击日历签到，连续签到奖励丰厚。',
+            '9. 游戏社区：进入游戏圈交流，每日可获 50 金币。',
             '【道具支持】',
-            '7. 遇到困难可使用下方道具（撤销、移出、洗牌）。'
+            '10. 遇到困难可使用下方道具（撤销、移出、洗牌）。'
         ];
 
         const textStyle = new PIXI.TextStyle({
@@ -1694,7 +1778,20 @@ function initHomeScreen() {
             lineHeight: 18
         });
 
-        let startY = -panelH / 2 + 75;
+        const scrollHeight = panelH - 140;
+        const scrollY = -panelH / 2 + 70;
+
+        const scrollMask = new PIXI.Graphics();
+        scrollMask.beginFill(0xffffff);
+        scrollMask.drawRect(-panelW / 2 + 10, scrollY, panelW - 20, scrollHeight);
+        scrollMask.endFill();
+        panel.addChild(scrollMask);
+
+        const scrollContainer = new PIXI.Container();
+        scrollContainer.mask = scrollMask;
+        panel.addChild(scrollContainer);
+
+        let startY = scrollY + 5;
         rules.forEach((rule) => {
             const t = new PIXI.Text(rule, textStyle);
             t.anchor.set(0, 0);
@@ -1708,9 +1805,41 @@ function initHomeScreen() {
                 t.y = startY;
             }
 
-            panel.addChild(t);
+            scrollContainer.addChild(t);
             startY += t.height + (isCategory ? 2 : 6);
         });
+
+        const totalContentHeight = startY - scrollY;
+
+        const contentBg = new PIXI.Graphics();
+        contentBg.beginFill(0xffffff, 0.001); // invisible
+        contentBg.drawRect(-panelW / 2 + 10, scrollY, panelW - 20, totalContentHeight + 20);
+        contentBg.endFill();
+        scrollContainer.addChildAt(contentBg, 0);
+
+        scrollContainer.interactive = true;
+        let isDragging = false;
+        let dragStartY = 0;
+        let containerStartY = 0;
+
+        scrollContainer.on('pointerdown', (e: any) => {
+            isDragging = true;
+            dragStartY = e.data.global.y;
+            containerStartY = scrollContainer.y;
+        });
+        scrollContainer.on('pointermove', (e: any) => {
+            if (!isDragging) return;
+            let targetY = containerStartY + (e.data.global.y - dragStartY);
+            const minScrollY = Math.min(0, scrollHeight - totalContentHeight - 20);
+            if (targetY > 0) targetY = 0;
+            if (targetY < minScrollY) targetY = minScrollY;
+            scrollContainer.y = targetY;
+        });
+        const stopDrag = () => { isDragging = false; };
+        scrollContainer.on('pointerup', stopDrag);
+        scrollContainer.on('pointerupoutside', stopDrag);
+        scrollContainer.on('touchend', stopDrag);
+        scrollContainer.on('touchendoutside', stopDrag);
 
         // Close Button
         const closeBtn = new PIXI.Container();
@@ -2040,7 +2169,32 @@ function initHomeScreen() {
     pvpBtn.y = screenHeight * 0.86;
     homeContainer.addChild(pvpBtn);
 
+    const lockIcon = new PIXI.Text('🔒 通关第 2 关解锁', { 
+        fontFamily: '"PingFang SC", sans-serif', fontSize: 12, fill: '#FFFFFF', fontWeight: 'bold',
+        stroke: '#000000', strokeThickness: 2
+    });
+    lockIcon.anchor.set(0.5);
+    lockIcon.position.set(0, 36); 
+    const pvpInner = pvpBtn.getChildAt(0) as PIXI.Container;
+    pvpInner.addChild(lockIcon);
+
+    // 动态更新每日擂台的解锁状态
+    app.ticker.add(() => {
+        if (!pvpBtn.parent || !pvpBtn.parent.visible) return;
+        const isLocked = (playerData.level || 1) <= 2;
+        pvpBtn.alpha = isLocked ? 0.7 : 1;
+        lockIcon.visible = isLocked;
+    });
+
     const startDaily = () => {
+        if ((playerData.level || 1) <= 2) {
+            if (typeof wx !== 'undefined') {
+                wx.showModal({ title: '擂台未解锁', content: '每日擂台难度极高，包含各种特殊机制！\\n\\n为了保证游戏体验，请先通关主线第 2 关（教学关卡）熟悉基础规则哦。', showCancel: false, confirmText: '去闯关' });
+            } else {
+                alert('每日擂台未解锁：请先通关主线第 2 关熟悉规则！');
+            }
+            return;
+        }
         currentGameMode = 'daily';
         homeContainer.visible = false;
         gameContainer.visible = true;
@@ -2203,7 +2357,6 @@ let currentShopTab: string = 'tiles';
 function openShopScreen(type: 'skin' | 'props' = 'skin', tab?: string) {
     currentShopType = type;
     currentShopTab = tab ? tab : (type === 'skin' ? 'bgs' : 'props');
-    homeContainer.visible = false;
     shopContainer.visible = true;
     renderShopScreen();
 }
@@ -2326,7 +2479,7 @@ function createShopCard(item: any, category: string, isUnlocked: boolean, isEqui
 
             let emojiStr = '🎁';
             if (category === 'props') {
-                const emojis: any = { 'undo': '↩️', 'extract': '⬆️', 'shuffle': '🔀', 'bundle': '🎁' };
+                const emojis: any = { 'undo': '🔙', 'extract': '📤', 'shuffle': '🔀', 'bundle': '🎁' };
                 emojiStr = emojis[item.id] || '🎁';
             } else {
                 const emojis: any = { 'ad': '📺', 'share': '🤝' };
@@ -2446,6 +2599,11 @@ function createShopCard(item: any, category: string, isUnlocked: boolean, isEqui
 function renderShopScreen() {
     shopContainer.removeChildren();
 
+    // 实时同步刷新游戏内的道具按钮数量（保证半透明背景下能立刻看到数量变化）
+    if (btnUndoGlobal) btnUndoGlobal.updateCount(playerData.props.undo);
+    if (btnExtractGlobal) btnExtractGlobal.updateCount(playerData.props.extract);
+    if (btnShuffleGlobal) btnShuffleGlobal.updateCount(playerData.props.shuffle);
+
     // BG: 使用半透明黑色，让玩家能直接看到装备的新背景
     const overlay = new PIXI.Graphics();
     overlay.beginFill(0x4E342E, 0.7); // 温暖的棕色半透明背景
@@ -2483,9 +2641,14 @@ function renderShopScreen() {
     backBtn.interactive = true;
     backBtn.buttonMode = true;
 
-    const closeHandler = () => { shopContainer.visible = false; homeContainer.visible = true; };
+    const closeHandler = () => {
+        shopContainer.visible = false;
+        if (btnUndoGlobal) btnUndoGlobal.updateCount(playerData.props.undo);
+        if (btnExtractGlobal) btnExtractGlobal.updateCount(playerData.props.extract);
+        if (btnShuffleGlobal) btnShuffleGlobal.updateCount(playerData.props.shuffle);
+    };
     overlay.on('pointerdown', closeHandler);
-    
+
     backBtn.on('pointerdown', () => { backBtn.scale.set(0.9); backBtn.alpha = 0.8; });
     backBtn.on('pointerup', () => { backBtn.scale.set(1); backBtn.alpha = 1; closeHandler(); });
     backBtn.on('pointerupoutside', () => { backBtn.scale.set(1); backBtn.alpha = 1; });
@@ -2690,13 +2853,27 @@ function renderShopScreen() {
                         renderShopScreen(); // refresh
                     });
                 } else if (item.isShare) {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    if (playerData.shareDate !== todayStr) {
+                        playerData.shareDate = todayStr;
+                        playerData.shareCount = 0;
+                    }
+                    if ((playerData.shareCount || 0) >= 3) {
+                        if (typeof wx !== 'undefined') {
+                            wx.showToast({ title: '今日分享奖励已达上限', icon: 'error' });
+                        } else {
+                            alert('今日分享奖励已达上限，请明天再来吧！');
+                        }
+                        return;
+                    }
+
                     if (typeof wx !== 'undefined' && wx.shareAppMessage) {
                         wx.shareAppMessage({
-                            title: '一笔画物理消除太好玩了，快来和我一起挑战最强关卡！',
-                            imageUrl: '' // 默认截屏
+                            title: '奇趣果宝消太好玩了，快来和我一起挑战最强关卡！'
                         });
                         // 微信取消了分享成功回调，小游戏通常在拉起面板后或延时发放奖励
                         setTimeout(() => {
+                            playerData.shareCount = (playerData.shareCount || 0) + 1;
                             playerData.coins += 100;
                             savePlayerData();
                             renderShopScreen();
@@ -2704,6 +2881,7 @@ function renderShopScreen() {
                         }, 2000);
                     } else {
                         // Web端/测试环境 fallback
+                        playerData.shareCount = (playerData.shareCount || 0) + 1;
                         playerData.coins += 100;
                         savePlayerData();
                         renderShopScreen();
@@ -2879,11 +3057,20 @@ function initGameScreen() {
     gameContainer.addChild(levelTopBarText);
 
     dailyTimerText = new PIXI.Text('00:00', {
-        fontFamily: '"PingFang SC"', fontSize: 16, fill: '#FFD700', fontWeight: 'bold',
-        stroke: '#000000', strokeThickness: 3
+        fontFamily: '"Arial Rounded MT Bold", "PingFang SC", sans-serif', 
+        fontSize: 18, 
+        fill: '#FFFFFF', 
+        fontWeight: '900',
+        stroke: '#4A6984', // 柔和的灰蓝色描边，与天空和半透明黑底座呼应
+        strokeThickness: 3,
+        dropShadow: true,
+        dropShadowColor: '#000000',
+        dropShadowAlpha: 0.2,
+        dropShadowDistance: 2,
+        dropShadowBlur: 2
     });
     dailyTimerText.anchor.set(0.5);
-    dailyTimerText.position.set(screenWidth / 2, topY + 40);
+    dailyTimerText.position.set(screenWidth / 2, topY + 48); // 下移 8 个像素，防止和顶部的胶囊底座贴得太近
     dailyTimerText.visible = false;
     gameContainer.addChild(dailyTimerText);
 
@@ -3085,8 +3272,8 @@ function loadLevel(level: number) {
         }
     }
 
-    // 3. 计算难度：规划【波浪式】无尽难度曲线
-    let totalTiles = 36; // 第一关爽快极简
+    // 3. 计算难度：规划【波浪式】无尽难度曲线 (支持上千关)
+    let totalTiles = 30; // 第一关极简
     let seed = level;
 
     if (currentGameMode === 'daily') {
@@ -3094,23 +3281,28 @@ function loadLevel(level: number) {
         seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
         totalTiles = 282; // 魔鬼难度，必须是 3 的倍数
     } else {
-        if (level === 1) totalTiles = 36;
-        else if (level === 2) totalTiles = 72;
-        else if (level === 3) totalTiles = 108;
-        else if (level === 4) totalTiles = 144;
+        if (level === 1) totalTiles = 30;
+        else if (level === 2) totalTiles = 45;
+        else if (level === 3) totalTiles = 60;
+        else if (level === 4) totalTiles = 75;
+        else if (level === 5) totalTiles = 90;
         else {
-            // 第 5 关开始进入无尽模式，采用“波浪式循环”
-            // 每 5 关为一个周期：难度先回落让玩家喘息，再逐步达到新的巅峰
-            const cycle = Math.floor((level - 5) / 5); // 周期数 (0, 1, 2...)
-            const step = (level - 5) % 5;              // 周期内的第几关 (0, 1, 2, 3, 4)
+            // 第 6 关开始进入无尽模式，采用“波浪式循环”
+            // 每 10 关为一个周期：难度会有小的波动，整体逐步上升
+            const cycle = Math.floor((level - 6) / 10); // 周期数 (0, 1, 2...)
+            const step = (level - 6) % 10;              // 周期内的第几关 (0 到 9)
 
-            // 周期初基数随周期缓慢上升，但比上一周期的巅峰要低 (实现呼吸感)
-            const base = 150 + cycle * 18;
-            totalTiles = base + step * 36;
+            // 周期初基数随周期缓慢上升，最高基数不超过 240
+            const base = Math.min(240, 90 + cycle * 12);
+            // 周期内逐步上升，每关增加 6~9 块左右
+            totalTiles = base + step * 9;
         }
 
         // 物理上限 300，到达 300 后靠打乱花色和负面方块的随机性来维持可玩性
         if (totalTiles > 300) totalTiles = 300;
+
+        // 防御性编程：强制变为 3 的倍数
+        totalTiles = Math.floor(totalTiles / 3) * 3;
     }
 
     // 重点：生成器内部会自动根据 totalTiles 强制分配图案种类
@@ -3189,6 +3381,48 @@ function loadLevel(level: number) {
     });
 
     updateTileStates();
+
+    // 在主线模式下，根据关卡初次展示新机制弹窗
+    if (currentGameMode === 'main') {
+        if (level === 10 && !playerData.unlockedItems.includes('hint_lock')) {
+            playerData.unlockedItems.push('hint_lock');
+            savePlayerData();
+            setTimeout(() => {
+                if (typeof wx !== 'undefined') wx.showModal({ title: '新机制：🔒 锁链方块', content: '被锁住的方块无法点击。\n\n当你成功消除一组(3个)其他方块时，最顶层的一把锁将会被解开！', showCancel: false, confirmText: '知道了' });
+            }, 300);
+        } else if (level === 20 && !playerData.unlockedItems.includes('hint_ice')) {
+            playerData.unlockedItems.push('hint_ice');
+            savePlayerData();
+            setTimeout(() => {
+                if (typeof wx !== 'undefined') wx.showModal({ title: '新机制：🧊 冰冻方块', content: '带有冰块的方块可以放入暂存槽，但在冰化之前无法参与消除！\n\n你需要成功消除一组（3个）其他任何图案的方块，就能产生震动，震碎暂存区里所有的冰块！\n\n被冻结时它会白白占用空间，请谨慎操作！', showCancel: false, confirmText: '知道了' });
+            }, 300);
+        } else if (level === 30 && !playerData.unlockedItems.includes('hint_bomb')) {
+            playerData.unlockedItems.push('hint_bomb');
+            savePlayerData();
+            setTimeout(() => {
+                if (typeof wx !== 'undefined') wx.showModal({ title: '新机制：💣 定时炸弹', content: '带有倒计时的炸弹极其危险！\n\n你每点击一次方块，倒计时就会减1。必须在倒计时变为0之前消除它，否则游戏直接失败！', showCancel: false, confirmText: '知道了' });
+            }, 300);
+        }
+    } else if (currentGameMode === 'daily') {
+        // 如果玩家越级打擂台，给一个汇总生存指南（仅弹一次）
+        if (!playerData.unlockedItems.includes('hint_daily_guide')) {
+            playerData.unlockedItems.push('hint_daily_guide');
+            savePlayerData();
+            
+            setTimeout(() => {
+                if (typeof wx !== 'undefined') {
+                    wx.showModal({ 
+                        title: '☠️ 擂台生存指南', 
+                        content: '每日擂台融合了极其危险的特殊机制：\n\n🔒 锁链：需消除一组方块来解开表层。\n🧊 冰块：在暂存槽内无法消除，必须靠消除其他方块来震碎它。\n💣 炸弹：每次点击都会倒数，归零即死！\n\n准备好迎接真正的挑战了吗？', 
+                        showCancel: false, 
+                        confirmText: '准备好了' 
+                    });
+                } else {
+                    alert('擂台生存指南：包含锁链、冰块、定时炸弹，请千万小心！');
+                }
+            }, 300);
+        }
+    }
 }
 
 const tileSkinTextures: Record<string, PIXI.Texture> = {
@@ -3258,7 +3492,13 @@ function createTileGraphics(data: TileData, themeOverride?: any): GameTile {
 
     let patternNode: PIXI.Sprite | PIXI.Text;
     if (data.isBlind) {
-        patternNode = new PIXI.Text('❓', { fontSize: TILE_SIZE * 0.65, align: 'center' });
+        patternNode = new PIXI.Text('?', new PIXI.TextStyle({
+            fontFamily: '"Arial Rounded MT Bold", "PingFang SC", sans-serif',
+            fontSize: TILE_SIZE * 0.7,
+            fontWeight: 'bold',
+            fill: '#8D6E63', // 柔和的浅棕色，不刺眼
+            align: 'center'
+        }));
     } else {
         const tex = equippedEmoji.textures[data.type % equippedEmoji.textures.length];
         patternNode = new PIXI.Sprite(tex);
@@ -3284,18 +3524,12 @@ function createTileGraphics(data: TileData, themeOverride?: any): GameTile {
 
     tile.addChild(patternNode);
 
-    // 5. 遮挡阴影层 (当被上方方块压住时显示)
-    const darkOverlay = new PIXI.Graphics();
-    darkOverlay.beginFill(0x000000, 0.55);
-    // 宽高各加 2px 覆盖 1.5px 的描边，高度加上 6px 覆盖 3D 厚度层
-    darkOverlay.drawRoundedRect(-TILE_SIZE / 2 - 1, -TILE_SIZE / 2 - 1, TILE_SIZE + 2, TILE_SIZE + 8, 12);
-    darkOverlay.endFill();
-    darkOverlay.name = 'darkOverlay';
-    darkOverlay.visible = false;
-    tile.addChild(darkOverlay);
+    // 5. 遮挡阴影层使用 tint 代替 Graphics，避免边缘白边露出
+
+    const emojiFontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "PingFang SC", "Microsoft YaHei", sans-serif';
 
     if (data.isLocked) {
-        const lockIcon = new PIXI.Text('🔒', { fontSize: TILE_SIZE * 0.5 });
+        const lockIcon = new PIXI.Text('🔒', { fontFamily: emojiFontFamily, fontSize: TILE_SIZE * 0.5 });
         lockIcon.name = 'lockIcon';
         lockIcon.anchor.set(0.5);
         // 给锁加上一些半透明黑色底让它更明显
@@ -3315,7 +3549,7 @@ function createTileGraphics(data: TileData, themeOverride?: any): GameTile {
         iceOverlay.endFill();
         iceOverlay.name = 'iceOverlay';
 
-        const iceIcon = new PIXI.Text('❄️', { fontSize: TILE_SIZE * 0.4 });
+        const iceIcon = new PIXI.Text('\u2744', { fontFamily: emojiFontFamily, fontSize: TILE_SIZE * 0.4 });
         iceIcon.name = 'iceIcon';
         iceIcon.alpha = 0.8;
         iceIcon.anchor.set(0.5);
@@ -3325,10 +3559,30 @@ function createTileGraphics(data: TileData, themeOverride?: any): GameTile {
     }
 
     if (data.bombTimer !== undefined) {
-        const bombText = new PIXI.Text(`💣${data.bombTimer}`, { fontSize: 11, fill: '#FF0000', fontWeight: 'bold' });
-        bombText.name = 'bombText';
-        bombText.position.set(-TILE_SIZE / 2 + 2, -TILE_SIZE / 2 + 2);
-        tile.addChild(bombText);
+        const bombContainer = new PIXI.Container();
+        bombContainer.name = 'bombBadge';
+
+        const bombEmoji = new PIXI.Text('💣', { fontFamily: emojiFontFamily, fontSize: 13 });
+        bombEmoji.anchor.set(0.5);
+        bombEmoji.x = 0;
+
+        const bombNum = new PIXI.Text(`${data.bombTimer}`, { 
+            fontFamily: '"Arial Rounded MT Bold", "PingFang SC", sans-serif', 
+            fontSize: 12, 
+            fill: '#E53935', 
+            fontWeight: '900',
+            stroke: '#FFFFFF',
+            strokeThickness: 3
+        });
+        bombNum.name = 'bombNumText';
+        bombNum.anchor.set(0.5);
+        bombNum.x = 14; 
+        
+        bombContainer.addChild(bombEmoji, bombNum);
+        
+        // 放置在方块左上角
+        bombContainer.position.set(-TILE_SIZE / 2 + 10, -TILE_SIZE / 2 + 10);
+        tile.addChild(bombContainer);
     }
 
     // 默认按照 0 计算 x，在 loadLevel 渲染时会被动态居中逻辑覆盖
@@ -3367,12 +3621,24 @@ function updateTileStates() {
             }
         }
 
-        const overlay = t1.getChildByName('darkOverlay') as PIXI.Graphics;
+        const bg = t1.getChildByName('bg') as PIXI.Sprite;
+        const pattern = t1.getChildByName('patternNode') as PIXI.Sprite | PIXI.Text;
+
+        (t1 as any).isCovered = isCovered;
+
         if (isCovered) {
-            if (overlay) overlay.visible = true;
+            if (bg) bg.tint = 0x888888;
+            if (pattern) {
+                if (t1.tileData.isBlind) pattern.alpha = 0.5;
+                else (pattern as PIXI.Sprite).tint = 0x888888;
+            }
             t1.interactive = false;
         } else {
-            if (overlay) overlay.visible = false;
+            if (bg) bg.tint = 0xFFFFFF;
+            if (pattern) {
+                if (t1.tileData.isBlind) pattern.alpha = 1.0;
+                else (pattern as PIXI.Sprite).tint = 0xFFFFFF;
+            }
             // 未被遮挡时，如果被锁住，依然不可点击
             t1.interactive = !t1.tileData.isLocked;
         }
@@ -3410,7 +3676,9 @@ function onTileClicked(tile: GameTile) {
     if (tile.tileData.isBlind) {
         const patternNode = tile.getChildByName('patternNode');
         const equippedEmoji = SHOP_ITEMS.emojis.find((e: any) => e.id === playerData.equipped.emoji) || SHOP_ITEMS.emojis[0];
+        let insertIndex = 1;
         if (patternNode) {
+            insertIndex = tile.getChildIndex(patternNode);
             tile.removeChild(patternNode);
         }
         const tex = equippedEmoji.textures[tile.tileData.type % equippedEmoji.textures.length];
@@ -3425,7 +3693,7 @@ function onTileClicked(tile: GameTile) {
 
         newPattern.blendMode = PIXI.BLEND_MODES.NORMAL;
         newPattern.y = 0; // 与 createTileGraphics 保持一致，绝对居中
-        tile.addChild(newPattern);
+        tile.addChildAt(newPattern, insertIndex);
         (tile.tileData as any).wasBlind = true;
         tile.tileData.isBlind = false;
     }
@@ -3437,12 +3705,15 @@ function onTileClicked(tile: GameTile) {
     const allTiles = [...(tileContainer.children as GameTile[]), ...holdingArea];
     allTiles.forEach(t => {
         if (t.tileData.bombTimer !== undefined) {
-            const darkOverlay = t.getChildByName('darkOverlay');
-            if (darkOverlay && darkOverlay.visible) return;
+            // 被遮挡的炸弹不计时
+            if ((t as any).isCovered) return;
 
             t.tileData.bombTimer--;
-            const bombText = t.getChildByName('bombText') as PIXI.Text;
-            if (bombText) bombText.text = `💣${t.tileData.bombTimer}`;
+            const bombBadge = t.getChildByName('bombBadge') as PIXI.Container;
+            if (bombBadge) {
+                const bombNumText = bombBadge.getChildByName('bombNumText') as PIXI.Text;
+                if (bombNumText) bombNumText.text = `${t.tileData.bombTimer}`;
+            }
         }
     });
 
@@ -3677,9 +3948,7 @@ function checkMatch() {
             }
         });
 
-        // 获得金币奖励
-        playerData.coins += 10;
-        savePlayerData();
+
 
         // 核心机制深化：成功消除一次，只能随机/最高层解锁【1个】锁链方块！
         const activeTiles = tileContainer.children as GameTile[];
@@ -3751,8 +4020,16 @@ function checkMatch() {
                     wx.showModal({
                         title: '擂台通关！',
                         content: `太强了！你战胜了今天的魔鬼盘面！\n用时: ${m}:${s}\n奖励: 100 金币`,
-                        showCancel: false,
-                        success: () => {
+                        cancelText: '返回',
+                        confirmText: '炫耀一下',
+                        success: (res: any) => {
+                            if (res.confirm) {
+                                if (typeof wx !== 'undefined' && wx.shareAppMessage) {
+                                    wx.shareAppMessage({
+                                        title: `我用时${m}分${s}秒通关了今天的魔鬼擂台，不服来战！`
+                                    });
+                                }
+                            }
                             gameContainer.visible = false;
                             homeContainer.visible = true;
                             updateGlobalBackground(false);
@@ -3872,9 +4149,7 @@ function watchAdToGetProp(propKey: 'undo' | 'extract' | 'shuffle') {
                     content: '前往商店用金币购买？',
                     success: (res2: any) => {
                         if (res2.confirm) {
-                            currentShopType = 'props';
-                            currentShopTab = 'coins';
-                            renderShopScreen();
+                            openShopScreen('props', 'coins');
                         }
                     }
                 });
@@ -4112,12 +4387,12 @@ const baseY = screenHeight * 0.45;
 let animTime = 0;
 const floatAnimation = (delta: number) => {
     animTime += delta * 0.05;
-    
+
     // Animate illustration (subtle breathing bounce)
     loadingArtSprite.y = baseY + Math.sin(animTime) * 6;
     const currentScale = baseScale * (1 + Math.cos(animTime * 1.5) * 0.03);
     loadingArtSprite.scale.set(currentScale);
-    
+
     // Animate premium logo (reusing home screen logic)
     updatePremiumLogoAnimation(logoObjs, animTime * 1.5, targetLogoScale);
 
@@ -4136,7 +4411,7 @@ const barHeight = 24;
 
 const progressBg = new PIXI.Graphics();
 // Clean semi-transparent dark pill background
-progressBg.beginFill(0x000000, 0.2); 
+progressBg.beginFill(0x000000, 0.2);
 progressBg.drawRoundedRect(-barWidth / 2, 0, barWidth, barHeight, barHeight / 2);
 progressBg.endFill();
 // Subtle outer white stroke for premium feel
@@ -4195,7 +4470,7 @@ const loadingStartTime = Date.now();
 function checkLoadingComplete() {
     loadedCount++;
     const progressRatio = loadedCount / uniqueBases.length;
-    
+
     progressBar.clear();
     if (progressRatio > 0.02) {
         const padding = 3;
@@ -4203,22 +4478,22 @@ function checkLoadingComplete() {
         const innerH = barHeight - padding * 2;
         const startX = -barWidth / 2 + padding;
         const startY = padding;
-        
+
         // Single vibrant, beautiful amber pill
         progressBar.beginFill(0xFFC107); // Vibrant bright amber/yellow
         progressBar.drawRoundedRect(startX, startY, innerW, innerH, innerH / 2);
         progressBar.endFill();
     }
-    
+
     if (loadedCount === uniqueBases.length) {
         const timeElapsed = Date.now() - loadingStartTime;
         const delay = Math.max(0, MIN_LOADING_TIME - timeElapsed);
-        
+
         setTimeout(() => {
             app.ticker.remove(floatAnimation);
             app.stage.removeChild(loadingContainer);
             loadingContainer.destroy({ children: true });
-            
+
             initHomeScreen();
             initGameScreen();
             updateGlobalBackground(false);

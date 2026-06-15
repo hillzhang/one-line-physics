@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -43,7 +44,7 @@ func SubmitScore(db *gorm.DB) gin.HandlerFunc {
 				existingRecord.AvatarUrl = req.AvatarUrl
 				
 				// 根据模式判断是否覆盖分数
-				if req.Mode == "daily" {
+				if strings.HasPrefix(req.Mode, "daily") {
 					// 擂台模式（时间竞速）：时间越短越好。如果是0则表示没成绩，也可以覆盖
 					if existingRecord.Score == 0 || req.Score < existingRecord.Score {
 						existingRecord.Score = req.Score
@@ -82,7 +83,7 @@ func GetTopLeaderboard(db *gorm.DB) gin.HandlerFunc {
 
 		var top []models.Leaderboard
 		if db != nil {
-			if mode == "daily" {
+			if strings.HasPrefix(mode, "daily") {
 				// 擂台竞速：从小到大排序
 				db.Where("mode = ?", mode).Order("score ASC").Limit(50).Find(&top)
 			} else {
