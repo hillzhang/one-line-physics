@@ -84,8 +84,14 @@ func GetTopLeaderboard(db *gorm.DB) gin.HandlerFunc {
 		var top []models.Leaderboard
 		if db != nil {
 			if strings.HasPrefix(mode, "daily") {
-				// 擂台竞速：从小到大排序
-				db.Where("mode = ?", mode).Order("score ASC").Limit(50).Find(&top)
+				if len(mode) > 6 {
+					dateStr := mode[6:] // 提取 YYYY-MM-DD
+					// 兼容旧的 mode="daily" 且日期匹配的数据，以及新的 mode="daily_YYYY-MM-DD" 的数据
+					// 擂台竞速：从小到大排序
+					db.Where("mode = ? OR (mode = 'daily' AND DATE(created_at) = ?)", mode, dateStr).Order("score ASC").Limit(50).Find(&top)
+				} else {
+					db.Where("mode = ?", mode).Order("score ASC").Limit(50).Find(&top)
+				}
 			} else {
 				// 主线闯关：从大到小排序
 				db.Where("mode = ?", mode).Order("score DESC").Limit(50).Find(&top)
