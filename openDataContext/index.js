@@ -5,6 +5,32 @@ let currentScoreKey = 'score';
 let currentFormat = 'level';
 let currentTitle = '';
 
+let scrollY = 0;
+let maxScrollY = 0;
+let startY = 0;
+let lastY = 0;
+
+wx.onTouchStart((e) => {
+  if (e.touches.length > 0) {
+    startY = e.touches[0].clientY;
+    lastY = startY;
+  }
+});
+
+wx.onTouchMove((e) => {
+  if (e.touches.length > 0) {
+    let currentY = e.touches[0].clientY;
+    let deltaY = currentY - lastY;
+    scrollY += deltaY;
+    if (scrollY > 0) scrollY = 0;
+    if (scrollY < -maxScrollY) scrollY = -maxScrollY;
+    lastY = currentY;
+    if (cachedDataList) {
+      drawLeaderboard(cachedDataList);
+    }
+  }
+});
+
 function drawLeaderboard(dataList) {
   let sysInfo = wx.getSystemInfoSync();
   let pixelRatio = sysInfo.pixelRatio || 2;
@@ -54,10 +80,18 @@ function drawLeaderboard(dataList) {
   let cardWidth = 300;
   let cardLeft = centerX - cardWidth / 2;
 
+  let totalHeight = dataList.length * 56 + 20;
+  maxScrollY = Math.max(0, totalHeight - logicalHeight);
+
+  context.save();
+  context.translate(0, scrollY);
+
   // 画好友列表
   dataList.forEach((item, index) => {
     let cardHeight = 48;
-    let y = index * 56 + 10; 
+    // 如果是每日擂台模式，顶部留出 40px 给日期选择器
+    let startY = (currentFormat === 'time') ? 40 : 10;
+    let y = index * 56 + startY; 
 
     // 背景卡片 (与主域排行榜颜色同步，交替深浅)
     if (index % 2 === 0) {
@@ -77,19 +111,26 @@ function drawLeaderboard(dataList) {
 
     // 头像
     let avatarX = cardLeft + 65;
-    let avatarImg = wx.createImage();
-    avatarImg.src = item.avatarUrl;
-    avatarImg.onload = () => {
+    if (!item._cachedAvatarImg) {
+      let avatarImg = wx.createImage();
+      avatarImg.src = item.avatarUrl;
+      item._cachedAvatarImg = avatarImg;
+      avatarImg.onload = () => {
+        item._avatarLoaded = true;
+        drawLeaderboard(cachedDataList);
+      };
+    }
+
+    if (item._avatarLoaded) {
       context.save();
-      context.scale(pixelRatio, pixelRatio);
       
       context.beginPath();
       context.arc(avatarX, y + cardHeight / 2, 14, 0, Math.PI * 2, false);
       context.clip();
-      context.drawImage(avatarImg, avatarX - 14, y + cardHeight / 2 - 14, 28, 28);
+      context.drawImage(item._cachedAvatarImg, avatarX - 14, y + cardHeight / 2 - 14, 28, 28);
       
       context.restore();
-    };
+    }
 
     // 昵称
     context.fillStyle = '#FFFFFF';
@@ -122,7 +163,8 @@ function drawLeaderboard(dataList) {
     context.fillText(displayStr, cardLeft + cardWidth - 20, y + cardHeight / 2 + 1);
   });
   
-  context.restore();
+  context.restore(); // restore translate
+  context.restore(); // restore initial scale
 }
 
 let cachedDataList = null;
@@ -168,6 +210,7 @@ wx.onMessage(data => {
           return currentFormat === 'time' ? scoreA - scoreB : scoreB - scoreA;
         });
         cachedDataList = dataList; // 缓存成功的数据
+        scrollY = 0; // 重置滚动
         drawLeaderboard(dataList);
       },
       fail: err => {

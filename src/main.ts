@@ -1108,12 +1108,103 @@ rankContainer.addChild(closeRankBtn);
 const globalRankListContainer = new PIXI.Container();
 globalRankListContainer.position.set(screenWidth * 0.1, rankTopY + 110);
 globalRankListContainer.visible = false; // 初始隐藏
+
+const listAreaHeight = Math.max(100, (screenHeight * 0.85) - (rankTopY + 110));
+
+// 添加透明可交互背景拦截点击，防止穿透到 rankOverlay，并支持拖拽滑动
+const globalRankBg = new PIXI.Graphics();
+globalRankBg.beginFill(0x000000, 0.001); // 极低透明度，肉眼不可见
+globalRankBg.drawRect(0, 0, screenWidth * 0.8, listAreaHeight);
+globalRankBg.endFill();
+globalRankBg.interactive = true; 
+globalRankListContainer.addChild(globalRankBg);
+
+// 添加滑动区域遮罩
+const globalRankMask = new PIXI.Graphics();
+globalRankMask.beginFill(0xFFFFFF);
+globalRankMask.drawRect(0, 0, screenWidth * 0.8, listAreaHeight);
+globalRankMask.endFill();
+globalRankListContainer.addChild(globalRankMask);
+globalRankListContainer.mask = globalRankMask;
+
+// 内容容器
+const globalRankScrollContent = new PIXI.Container();
+globalRankListContainer.addChild(globalRankScrollContent);
+
+// 强制设置容器交互和 hitArea，保证绝对能拦截点击，不会穿透到 rankOverlay
+globalRankListContainer.interactive = true;
+globalRankListContainer.hitArea = new PIXI.Rectangle(0, 0, screenWidth * 0.8, listAreaHeight);
+
+// 拖拽滑动逻辑
+let grDragging = false;
+let grLastY = 0;
+
+globalRankListContainer.on('pointerdown', (e: any) => {
+    grDragging = true;
+    grLastY = e.data.global.y;
+    if (e.stopPropagation) e.stopPropagation();
+});
+
+// 绑定到全局 app.stage，防止滑动过快脱离区域导致事件丢失
+    app.stage.on('pointermove', (e: any) => {
+        if (grDragging && globalRankListContainer.visible) {
+            let currentY = e.data.global.y;
+            let deltaY = currentY - grLastY;
+            
+            let contentHeight = 0;
+            if (globalRankScrollContent.children.length > 0) {
+                const lastChild = globalRankScrollContent.children[globalRankScrollContent.children.length - 1];
+                contentHeight = lastChild.y + 45; // 45 是行高
+            }
+            let maxScrollY = Math.max(0, contentHeight - listAreaHeight);
+            
+            // 越界时增加阻力
+            if (globalRankScrollContent.y > 0 || globalRankScrollContent.y < -maxScrollY) {
+                deltaY *= 0.3;
+            }
+            
+            globalRankScrollContent.y += deltaY;
+            grLastY = currentY;
+        }
+    });
+    
+    const endDrag = () => {
+        if (!grDragging) return;
+        grDragging = false;
+        
+        let contentHeight = 0;
+        if (globalRankScrollContent.children.length > 0) {
+            const lastChild = globalRankScrollContent.children[globalRankScrollContent.children.length - 1];
+            contentHeight = lastChild.y + 45;
+        }
+        let maxScrollY = Math.max(0, contentHeight - listAreaHeight);
+        let targetY = globalRankScrollContent.y;
+    if (targetY > 0) targetY = 0;
+    if (targetY < -maxScrollY) targetY = -maxScrollY;
+    
+    const bounce = () => {
+        if (grDragging) return;
+        const diff = targetY - globalRankScrollContent.y;
+        if (Math.abs(diff) > 0.5) {
+            globalRankScrollContent.y += diff * 0.2;
+            requestAnimationFrame(bounce);
+        } else {
+            globalRankScrollContent.y = targetY;
+        }
+    };
+    bounce();
+};
+
+app.stage.on('pointerup', endDrag);
+app.stage.on('pointerupoutside', endDrag);
+
 rankContainer.addChild(globalRankListContainer);
 
 function fetchAndRenderGlobalRank(mode: string) {
-    globalRankListContainer.removeChildren();
+    globalRankScrollContent.removeChildren();
+    globalRankScrollContent.y = 0; // 重置滚动
     const loadingText = new PIXI.Text('加载中...', { fill: '#FFFFFF', fontSize: 16 });
-    globalRankListContainer.addChild(loadingText);
+    globalRankScrollContent.addChild(loadingText);
 
     if (typeof wx !== 'undefined' && wx.cloud) {
         wx.cloud.callContainer({
@@ -1122,7 +1213,7 @@ function fetchAndRenderGlobalRank(mode: string) {
             header: { 'X-WX-SERVICE': 'golang-backend' },
             method: 'GET',
             success: (res: any) => {
-                globalRankListContainer.removeChildren();
+                globalRankScrollContent.removeChildren();
                 if (res.statusCode === 200 && Array.isArray(res.data)) {
                     const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔'];
                     const getAvatarForName = (name: string) => {
@@ -1135,7 +1226,8 @@ function fetchAndRenderGlobalRank(mode: string) {
 
                     res.data.forEach((player: any, index: number) => {
                         const row = new PIXI.Container();
-                        row.y = index * 45;
+                        const startY = mode.startsWith('daily') ? 40 : 0;
+                        row.y = index * 45 + startY;
 
                         const rowBg = new PIXI.Graphics();
                         rowBg.beginFill(index % 2 === 0 ? 0x374151 : 0x1F2937, 0.8);
@@ -1173,7 +1265,7 @@ function fetchAndRenderGlobalRank(mode: string) {
                         scoreText.position.set(screenWidth * 0.8 - 15, 20);
 
                         row.addChild(rankText, avatarText, nameText, scoreText);
-                        globalRankListContainer.addChild(row);
+                        globalRankScrollContent.addChild(row);
                     });
                 } else {
                     const errText = new PIXI.Text('加载失败', { fill: '#EF4444', fontSize: 16 });
