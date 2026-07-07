@@ -85,15 +85,15 @@
                 "type": "folder"
             },
             {
-                "value": "*.py",
+                "value": ".py",
                 "type": "suffix"
             },
             {
-                "value": "*.png",
+                "value": ".png",
                 "type": "suffix"
             },
             {
-                "value": "*.md",
+                "value": ".md",
                 "type": "suffix"
             }
         ],

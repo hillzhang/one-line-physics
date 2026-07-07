@@ -93,6 +93,34 @@ function getOffsetDateInfo(offset: number) {
     };
 }
 
+// ================= 小游戏版本更新检查 =================
+if (typeof wx !== 'undefined' && wx.getUpdateManager) {
+    const updateManager = wx.getUpdateManager();
+    updateManager.onCheckForUpdate(function (res) {
+        if (res.hasUpdate) {
+            console.log('发现新版本，正在后台下载...');
+        }
+    });
+    updateManager.onUpdateReady(function () {
+        wx.showModal({
+            title: '更新提示',
+            content: '新版本已经准备好，是否重启应用？',
+            showCancel: false,
+            success: function (res) {
+                if (res.confirm) {
+                    updateManager.applyUpdate();
+                }
+            }
+        });
+    });
+    updateManager.onUpdateFailed(function () {
+        wx.showToast({
+            title: '新版本下载失败，请检查网络',
+            icon: 'none'
+        });
+    });
+}
+
 const sysInfo = wx.getSystemInfoSync();
 const screenWidth = sysInfo.windowWidth;
 const screenHeight = sysInfo.windowHeight;
@@ -326,6 +354,7 @@ try {
     }
 } catch (e) { }
 
+let isUserDataLoaded = false;
 if (typeof wx !== 'undefined' && wx.cloud) {
     // 开启微信右上角分享和转发功能
     if (wx.showShareMenu) {
@@ -399,8 +428,14 @@ if (typeof wx !== 'undefined' && wx.cloud) {
                     submitToGlobalLeaderboard(currentName, 'main', playerData.level);
                 }
             }
+        },
+        complete: () => {
+            isUserDataLoaded = true;
+            if (typeof checkAllReady === 'function') checkAllReady();
         }
     });
+} else {
+    isUserDataLoaded = true;
 }
 
 let coinTextObj: PIXI.Text;
@@ -419,7 +454,46 @@ let dailyTimerText: PIXI.Text | null = null;
 let lastAdWatchTime: number = 0;
 const AD_COOLDOWN_MS = 60 * 1000; // 1分钟冷却限制
 
-const checkAndWatchAd = (onSuccess: () => void) => {
+// 提前初始化激励视频广告
+let rewardedVideoAd: any = null;
+let currentAdSuccessCallback: (() => void) | null = null;
+let currentAdFailCallback: (() => void) | null = null;
+
+if (typeof wx !== 'undefined' && wx.createRewardedVideoAd) {
+    rewardedVideoAd = wx.createRewardedVideoAd({
+        adUnitId: 'adunit-5ea1c9981a7482a2'
+    });
+
+    rewardedVideoAd.onError((err: any) => {
+        console.error('激励视频广告内部错误', err);
+    });
+
+    rewardedVideoAd.onClose((res: any) => {
+        // 用户点击了【关闭广告】按钮
+        // 小于 2.1.0 的基础库版本，res 是一个 undefined
+        if (res && res.isEnded || res === undefined) {
+            // 正常播放结束，可以下发游戏奖励
+            if (currentAdSuccessCallback) {
+                currentAdSuccessCallback();
+                currentAdSuccessCallback = null;
+                currentAdFailCallback = null;
+            }
+        } else {
+            // 播放中途退出，不下发游戏奖励
+            wx.showToast({
+                title: '观看完整视频才能获得奖励',
+                icon: 'none'
+            });
+            if (currentAdFailCallback) {
+                currentAdFailCallback();
+            }
+            currentAdSuccessCallback = null;
+            currentAdFailCallback = null;
+        }
+    });
+}
+
+const checkAndWatchAd = (onSuccess: () => void, onFail?: () => void) => {
     const now = Date.now();
     const timeSinceLastAd = now - lastAdWatchTime;
     if (timeSinceLastAd < AD_COOLDOWN_MS) {
@@ -427,6 +501,7 @@ const checkAndWatchAd = (onSuccess: () => void) => {
         if (typeof wx !== 'undefined') {
             wx.showToast({ title: `请休息一下，${secondsLeft}秒后再试`, icon: 'none' });
         }
+        if (onFail) onFail();
         return;
     }
 
@@ -444,13 +519,51 @@ const checkAndWatchAd = (onSuccess: () => void) => {
                 showCancel: false
             });
         }
+        if (onFail) onFail();
         return;
     }
 
-    if (typeof wx !== 'undefined') {
+    if (typeof wx !== 'undefined' && rewardedVideoAd) {
+        currentAdSuccessCallback = () => {
+            playerData.adCount!++;
+            lastAdWatchTime = Date.now();
+            onSuccess();
+        };
+        currentAdFailCallback = onFail || null;
+
+        // 用户触发广告后，显示激励视频广告
+        rewardedVideoAd.show().catch(() => {
+            // 失败重试
+            rewardedVideoAd.load()
+                .then(() => rewardedVideoAd.show())
+                .catch((err: any) => {
+                    console.error('激励视频 广告显示失败', err);
+                    const sysInfo = wx.getSystemInfoSync();
+                    if (sysInfo.platform === 'devtools' || sysInfo.platform === 'mac' || sysInfo.platform === 'windows') {
+                        // 开发者工具中常常拉不到广告，为方便调试直接发放奖励
+                        wx.showToast({ title: '开发环境直接发奖', icon: 'none' });
+                        if (currentAdSuccessCallback) {
+                            currentAdSuccessCallback();
+                            currentAdSuccessCallback = null;
+                            currentAdFailCallback = null;
+                        }
+                    } else {
+                        wx.showToast({
+                            title: '广告暂时未准备好，请稍后再试',
+                            icon: 'none'
+                        });
+                        if (currentAdFailCallback) {
+                            currentAdFailCallback();
+                        }
+                        currentAdSuccessCallback = null;
+                        currentAdFailCallback = null;
+                    }
+                });
+        });
+    } else if (typeof wx !== 'undefined') {
         wx.showModal({
             title: '提示',
-            content: '广告功能正在完善中，直接为您发放奖励！',
+            content: '广告服务正在加载中，直接为您发放奖励！',
             showCancel: false,
             success: () => {
                 playerData.adCount!++;
@@ -2959,6 +3072,9 @@ function renderShopScreen() {
                         playerData.coins += 100;
                         savePlayerData();
                         renderShopScreen(); // refresh
+                        if (typeof wx !== 'undefined') {
+                            wx.showToast({ title: '获得金币 +100', icon: 'success' });
+                        }
                     });
                 } else if (item.isShare) {
                     const todayStr = new Date().toISOString().split('T')[0];
@@ -4162,14 +4278,56 @@ function checkMatch() {
                     success: () => loadLevel(currentGameMode === 'daily' ? -1 : currentLevel)
                 });
             } else if (holdingArea.length >= HOLDING_SLOTS) {
+                const pauseTime = Date.now();
                 if (gameTimerInterval) clearInterval(gameTimerInterval);
                 if (wx.vibrateLong) wx.vibrateLong();
-                wx.showModal({
-                    title: '挑战失败',
-                    content: '暂存区已满，点击确定重新挑战本关',
-                    showCancel: false,
-                    success: () => loadLevel(currentGameMode === 'daily' ? -1 : currentLevel)
-                });
+                
+                const emptySlotIndices: number[] = [];
+                for (let i = 0; i < extractedSlots.length; i++) {
+                    if (!extractedSlots[i]) emptySlotIndices.push(i);
+                }
+
+                if (emptySlotIndices.length > 0) {
+                    wx.showModal({
+                        title: '挑战失败',
+                        content: '暂存区已满！是否观看视频广告复活（移出部分方块）？',
+                        confirmText: '看视频',
+                        cancelText: '重新挑战',
+                        success: (res: any) => {
+                            if (res.confirm) {
+                                checkAndWatchAd(() => {
+                                    playerData.props.extract++;
+                                    performExtract();
+                                    
+                                    if (currentGameMode === 'daily') {
+                                        gameStartTime += (Date.now() - pauseTime);
+                                        gameTimerInterval = setInterval(() => {
+                                            gameTimeSeconds = Math.floor((Date.now() - gameStartTime) / 1000);
+                                            const m = Math.floor(gameTimeSeconds / 60).toString().padStart(2, '0');
+                                            const s = (gameTimeSeconds % 60).toString().padStart(2, '0');
+                                            if (dailyTimerText) dailyTimerText.text = `${m}:${s}`;
+                                        }, 1000);
+                                    }
+                                    
+                                    if (typeof wx !== 'undefined') {
+                                        wx.showToast({ title: '复活成功！', icon: 'success' });
+                                    }
+                                }, () => {
+                                    setTimeout(() => checkMatch(), 500);
+                                });
+                            } else {
+                                loadLevel(currentGameMode === 'daily' ? -1 : currentLevel);
+                            }
+                        }
+                    });
+                } else {
+                    wx.showModal({
+                        title: '挑战失败',
+                        content: '暂存区已满，点击确定重新挑战本关',
+                        showCancel: false,
+                        success: () => loadLevel(currentGameMode === 'daily' ? -1 : currentLevel)
+                    });
+                }
             }
         }
     }
@@ -4250,6 +4408,11 @@ function watchAdToGetProp(propKey: 'undo' | 'extract' | 'shuffle') {
                     if (propKey === 'undo' && btnUndoGlobal) btnUndoGlobal.updateCount(playerData.props.undo);
                     if (propKey === 'extract' && btnExtractGlobal) btnExtractGlobal.updateCount(playerData.props.extract);
                     if (propKey === 'shuffle' && btnShuffleGlobal) btnShuffleGlobal.updateCount(playerData.props.shuffle);
+
+                    const propNames = { undo: '撤回', extract: '移出', shuffle: '洗牌' };
+                    if (typeof wx !== 'undefined') {
+                        wx.showToast({ title: `获得${propNames[propKey]}道具 x1`, icon: 'success' });
+                    }
                 });
             } else {
                 wx.showModal({
@@ -4575,9 +4738,10 @@ let loadedCount = 0;
 const MIN_LOADING_TIME = 0; // No artificial delay
 const loadingStartTime = Date.now();
 
-function checkLoadingComplete() {
-    loadedCount++;
-    const progressRatio = loadedCount / uniqueBases.length;
+function updateProgressBar() {
+    let assetsProgress = loadedCount / uniqueBases.length;
+    let dataProgress = isUserDataLoaded ? 1.0 : 0.0;
+    const progressRatio = (assetsProgress * 0.9) + (dataProgress * 0.1);
 
     progressBar.clear();
     if (progressRatio > 0.02) {
@@ -4592,8 +4756,25 @@ function checkLoadingComplete() {
         progressBar.drawRoundedRect(startX, startY, innerW, innerH, innerH / 2);
         progressBar.endFill();
     }
+}
+
+function checkLoadingComplete() {
+    loadedCount++;
+    updateProgressBar();
 
     if (loadedCount === uniqueBases.length) {
+        assetsLoaded = true;
+        if (typeof checkAllReady === 'function') checkAllReady();
+    }
+}
+
+let assetsLoaded = false;
+function checkAllReady() {
+    updateProgressBar();
+    if (assetsLoaded && !isUserDataLoaded) {
+        loadingSubText.text = '正在同步云端存档...';
+    } else if (assetsLoaded && isUserDataLoaded) {
+        loadingSubText.text = '准备进入游戏...';
         const timeElapsed = Date.now() - loadingStartTime;
         const delay = Math.max(0, MIN_LOADING_TIME - timeElapsed);
 
