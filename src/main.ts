@@ -124,7 +124,7 @@ if (typeof wx !== 'undefined' && wx.getUpdateManager) {
 const sysInfo = wx.getSystemInfoSync();
 const screenWidth = sysInfo.windowWidth;
 const screenHeight = sysInfo.windowHeight;
-const pixelRatio = sysInfo.pixelRatio || 1;
+const pixelRatio = Math.max(sysInfo.pixelRatio || 1, 2); // 强制最低像素比为2，解决PC端模糊问题
 
 // 移除由于微信环境缺少标准 DOM API 而导致崩溃的插件
 if (PIXI && PIXI.Renderer && (PIXI.Renderer as any).__plugins) {
@@ -134,12 +134,17 @@ if (PIXI && PIXI.Renderer && (PIXI.Renderer as any).__plugins) {
 // 强制 PixiJS 仅请求 WebGL 1，彻底避开微信 WAGame SDK 对 webgl2 的致命崩溃 Bug
 PIXI.settings.PREFER_ENV = PIXI.ENV.WEBGL_LEGACY;
 
+// 设置全局分辨率，确保 PIXI.Text 和滤镜等内部渲染也使用高分辨率，彻底解决PC端字体和边缘模糊
+PIXI.settings.RESOLUTION = pixelRatio;
+PIXI.settings.FILTER_RESOLUTION = pixelRatio;
+
 const app = new PIXI.Application({
     view: GameGlobal.canvas as any,
     width: screenWidth,
     height: screenHeight,
     resolution: pixelRatio,
     autoDensity: true,
+    antialias: true, // 开启抗锯齿，显著改善 PC 端边缘锯齿问题
     backgroundColor: 0x87CEEB,
     forceCanvas: false // 开启 WebGL 1，因为 game.js 已经打补丁完美绕过了 WebGL 2 崩溃
 });
@@ -286,7 +291,7 @@ if (typeof wx !== 'undefined' && wx.onTouchStart) {
 
 
 
-const TILE_SIZE = Math.floor(screenWidth / 10.5); // 确保 10 列宽度的阵型也能安全放下
+const TILE_SIZE = Math.floor(screenWidth / 10); // 确保 10 列宽度的阵型也能安全放下
 const TILE_MARGIN = 2; // 增加间距，让方块不要粘连
 const TILE_STEP_X = TILE_SIZE + TILE_MARGIN;
 const TILE_STEP_Y = TILE_SIZE + 4 + TILE_MARGIN; // Y轴步长必须大于 TILE_SIZE，防止下一行盖住上一行的 3D 厚度
@@ -451,8 +456,7 @@ let gameTimerInterval: any = null;
 let gameTimeSeconds: number = 0;
 let dailyTimerText: PIXI.Text | null = null;
 
-let lastAdWatchTime: number = 0;
-const AD_COOLDOWN_MS = 60 * 1000; // 1分钟冷却限制
+// removed ad cooldown variables
 
 // 提前初始化激励视频广告
 let rewardedVideoAd: any = null;
@@ -494,39 +498,16 @@ if (typeof wx !== 'undefined' && wx.createRewardedVideoAd) {
 }
 
 const checkAndWatchAd = (onSuccess: () => void, onFail?: () => void) => {
-    const now = Date.now();
-    const timeSinceLastAd = now - lastAdWatchTime;
-    if (timeSinceLastAd < AD_COOLDOWN_MS) {
-        const secondsLeft = Math.ceil((AD_COOLDOWN_MS - timeSinceLastAd) / 1000);
-        if (typeof wx !== 'undefined') {
-            wx.showToast({ title: `请休息一下，${secondsLeft}秒后再试`, icon: 'none' });
-        }
-        if (onFail) onFail();
-        return;
-    }
-
+    // 移除时间和次数限制，让玩家可以畅快看广告复活
     const today = new Date().toISOString().split('T')[0];
     if (playerData.adDate !== today) {
         playerData.adDate = today;
         playerData.adCount = 0;
     }
 
-    if (playerData.adCount! >= 5) {
-        if (typeof wx !== 'undefined') {
-            wx.showModal({
-                title: '次数已达上限',
-                content: '今日免费免广告奖励次数已用尽，请明日再来！',
-                showCancel: false
-            });
-        }
-        if (onFail) onFail();
-        return;
-    }
-
     if (typeof wx !== 'undefined' && rewardedVideoAd) {
         currentAdSuccessCallback = () => {
             playerData.adCount!++;
-            lastAdWatchTime = Date.now();
             onSuccess();
         };
         currentAdFailCallback = onFail || null;
@@ -567,14 +548,12 @@ const checkAndWatchAd = (onSuccess: () => void, onFail?: () => void) => {
             showCancel: false,
             success: () => {
                 playerData.adCount!++;
-                lastAdWatchTime = Date.now();
                 onSuccess();
             }
         });
     } else {
         // web testing fallback
         playerData.adCount!++;
-        lastAdWatchTime = Date.now();
         onSuccess();
     }
 };
@@ -1397,19 +1376,19 @@ function fetchAndRenderGlobalRank(mode: string) {
                     });
                 } else {
                     const errText = new PIXI.Text('加载失败', { fill: '#EF4444', fontSize: 16 });
-                    globalRankListContainer.addChild(errText);
+                    globalRankScrollContent.addChild(errText);
                 }
             },
             fail: () => {
-                globalRankListContainer.removeChildren();
+                globalRankScrollContent.removeChildren();
                 const errText = new PIXI.Text('网络错误', { fill: '#EF4444', fontSize: 16 });
-                globalRankListContainer.addChild(errText);
+                globalRankScrollContent.addChild(errText);
             }
         });
     } else {
-        globalRankListContainer.removeChildren();
+        globalRankScrollContent.removeChildren();
         const errText = new PIXI.Text('全服排行仅在微信环境可用', { fill: '#EF4444', fontSize: 16 });
-        globalRankListContainer.addChild(errText);
+        globalRankScrollContent.addChild(errText);
     }
 }
 
@@ -1594,7 +1573,7 @@ btnClaimCheckIn.on('pointerdown', () => {
     playerData.coins += reward;
     playerData.checkInStreak = currentStreak + 1;
     playerData.checkInDate = getOffsetDateInfo(0).key.replace('daily_score_', '');
-    try { wx.setStorageSync('playerData', JSON.stringify(playerData)); } catch (e) { }
+    savePlayerData();
     if (coinTextObj) coinTextObj.text = playerData.coins.toString();
     wx.showToast({ title: `签到成功，金币+${reward}`, icon: 'none' });
 
@@ -2253,6 +2232,13 @@ function initHomeScreen() {
         createToggle('📳 震动反馈', 90, 'vibration', (val) => {
             if (val && typeof wx !== 'undefined' && (wx as any).vibrateShort) (wx as any).vibrateShort({ type: 'light' });
         });
+
+        const versionText = new PIXI.Text('当前版本是v1.1.7', {
+            fontFamily: '"PingFang SC"', fontSize: 12, fill: '#9E9E9E'
+        });
+        versionText.anchor.set(0.5);
+        versionText.y = panelH / 2 - 25;
+        panel.addChild(versionText);
 
         const closeBtn = new PIXI.Container();
         closeBtn.y = panelH / 2 + 40;
@@ -3662,7 +3648,7 @@ function drawTileBg(bg: PIXI.Sprite, tileId: string) {
     bg.texture = tileSkinTextures[tileId] || tileSkinTextures['default'];
     // Size is exactly proportional to the 168x190 Canvas we used in Node.js
     // Let's set height proportionally to the width so it doesn't squish.
-    const targetFaceSize = TILE_SIZE * 1.05; // 稍微比网格大一点点显得饱满
+    const targetFaceSize = TILE_SIZE * 1.08; // 稍微比网格大一点点显得饱满
     const scale = targetFaceSize / 128; // 128 is the face size in our generated PNG
 
     bg.width = 168 * scale;
@@ -3729,7 +3715,7 @@ function createTileGraphics(data: TileData, themeOverride?: any): GameTile {
 
         // 根据背景白色区域的大小，等比例自适应缩放（保持水果不规则的原始宽高比）
         const maxDimension = Math.max(tex.width, tex.height);
-        const targetPatternSize = TILE_SIZE * 0.88; // 设定目标包围盒的最大边长
+        const targetPatternSize = TILE_SIZE * 0.92; // 设定目标包围盒的最大边长
         patternNode.scale.set(targetPatternSize / maxDimension);
 
         patternNode.blendMode = PIXI.BLEND_MODES.NORMAL;
@@ -3912,7 +3898,7 @@ function onTileClicked(tile: GameTile) {
 
         // 等比例自适应缩放（保持水果不规则的原始宽高比）
         const maxDimension = Math.max(tex.width, tex.height);
-        const targetPatternSize = TILE_SIZE * 0.88;
+        const targetPatternSize = TILE_SIZE * 0.92;
         newPattern.scale.set(targetPatternSize / maxDimension);
 
         newPattern.blendMode = PIXI.BLEND_MODES.NORMAL;
@@ -4281,7 +4267,7 @@ function checkMatch() {
                 const pauseTime = Date.now();
                 if (gameTimerInterval) clearInterval(gameTimerInterval);
                 if (wx.vibrateLong) wx.vibrateLong();
-                
+
                 const emptySlotIndices: number[] = [];
                 for (let i = 0; i < extractedSlots.length; i++) {
                     if (!extractedSlots[i]) emptySlotIndices.push(i);
@@ -4298,7 +4284,7 @@ function checkMatch() {
                                 checkAndWatchAd(() => {
                                     playerData.props.extract++;
                                     performExtract();
-                                    
+
                                     if (currentGameMode === 'daily') {
                                         gameStartTime += (Date.now() - pauseTime);
                                         gameTimerInterval = setInterval(() => {
@@ -4308,7 +4294,7 @@ function checkMatch() {
                                             if (dailyTimerText) dailyTimerText.text = `${m}:${s}`;
                                         }, 1000);
                                     }
-                                    
+
                                     if (typeof wx !== 'undefined') {
                                         wx.showToast({ title: '复活成功！', icon: 'success' });
                                     }

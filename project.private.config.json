@@ -1,7 +1,19 @@
 {
     "libVersion": "3.1.5",
     "projectname": "one-line-physics",
-    "condition": {},
+    "condition": {
+        "game": {
+            "list": [
+                {
+                    "name": "测试更新",
+                    "pathName": "",
+                    "query": "",
+                    "scene": null,
+                    "launchMode": "defalut"
+                }
+            ]
+        }
+    },
     "setting": {
         "urlCheck": true,
         "coverView": true,

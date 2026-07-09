@@ -3,6 +3,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   build: {
+    target: 'es2015',
     outDir: 'dist',
     lib: {
       entry: resolve(__dirname, 'src/main.ts'),
