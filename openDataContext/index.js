@@ -117,7 +117,9 @@ function drawLeaderboard(dataList) {
       item._cachedAvatarImg = avatarImg;
       avatarImg.onload = () => {
         item._avatarLoaded = true;
-        drawLeaderboard(cachedDataList);
+        if (cachedDataLists[currentScoreKey]) {
+          drawLeaderboard(cachedDataLists[currentScoreKey]);
+        }
       };
     }
 
@@ -167,7 +169,7 @@ function drawLeaderboard(dataList) {
   context.restore(); // restore initial scale
 }
 
-let cachedDataList = null;
+let cachedDataLists = {};
 
 wx.onMessage(data => {
   if (data.type === 'showLeaderboard') {
@@ -209,17 +211,17 @@ wx.onMessage(data => {
 
           return currentFormat === 'time' ? scoreA - scoreB : scoreB - scoreA;
         });
-        cachedDataList = dataList; // 缓存成功的数据
+        cachedDataLists[currentScoreKey] = dataList; // 缓存当前键的数据
         scrollY = 0; // 重置滚动
         drawLeaderboard(dataList);
       },
       fail: err => {
         console.error('获取好友数据失败', err);
 
-        // 如果有缓存，则使用缓存数据进行渲染（规避微信接口重复调用的隐私拦截Bug）
-        if (cachedDataList) {
+        // 如果有对应key的缓存，则使用缓存数据进行渲染（规避微信接口重复调用的隐私拦截Bug）
+        if (cachedDataLists[currentScoreKey]) {
           console.warn('接口拉取失败，使用缓存的排行榜数据');
-          drawLeaderboard(cachedDataList);
+          drawLeaderboard(cachedDataLists[currentScoreKey]);
           return;
         }
         context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);

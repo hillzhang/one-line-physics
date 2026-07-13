@@ -86,15 +86,32 @@ func GetTopLeaderboard(db *gorm.DB) gin.HandlerFunc {
 			if strings.HasPrefix(mode, "daily") {
 				if len(mode) > 6 {
 					dateStr := mode[6:] // 提取 YYYY-MM-DD
-					// 兼容旧的 mode="daily" 且日期匹配的数据，以及新的 mode="daily_YYYY-MM-DD" 的数据
-					// 擂台竞速：从小到大排序
-					db.Where("mode = ? OR (mode = 'daily' AND DATE(created_at) = ?)", mode, dateStr).Order("score ASC").Limit(50).Find(&top)
+					// 擂台竞速：从小到大排序 (时间越短越好)
+					db.Model(&models.Leaderboard{}).
+						Select("MAX(id) as id, openid, MAX(avatar_url) as avatar_url, MAX(nickname) as nickname, MIN(score) as score, mode, MAX(created_at) as created_at").
+						Where("mode = ? OR (mode = 'daily' AND DATE(created_at) = ?)", mode, dateStr).
+						Group("openid, mode").
+						Order("score ASC").
+						Limit(50).
+						Find(&top)
 				} else {
-					db.Where("mode = ?", mode).Order("score ASC").Limit(50).Find(&top)
+					db.Model(&models.Leaderboard{}).
+						Select("MAX(id) as id, openid, MAX(avatar_url) as avatar_url, MAX(nickname) as nickname, MIN(score) as score, mode, MAX(created_at) as created_at").
+						Where("mode = ?", mode).
+						Group("openid, mode").
+						Order("score ASC").
+						Limit(50).
+						Find(&top)
 				}
 			} else {
-				// 主线闯关：从大到小排序
-				db.Where("mode = ?", mode).Order("score DESC").Limit(50).Find(&top)
+				// 主线闯关：去重并从大到小排序
+				db.Model(&models.Leaderboard{}).
+					Select("MAX(id) as id, openid, MAX(avatar_url) as avatar_url, MAX(nickname) as nickname, MAX(score) as score, mode, MAX(created_at) as created_at").
+					Where("mode = ?", mode).
+					Group("openid, mode").
+					Order("score DESC").
+					Limit(50).
+					Find(&top)
 			}
 		} else {
 			// Mock 测试数据
