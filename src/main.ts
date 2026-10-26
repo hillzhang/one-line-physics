@@ -716,6 +716,26 @@ animalBase.setSize(512, 512);
 const animalBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_animals_2.png');
 animalBase2.setSize(512, 512);
 
+const succulentBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_succulents.png');
+succulentBase.setSize(512, 512);
+const succulentBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_succulents_2.png');
+succulentBase2.setSize(512, 512);
+
+const spaceBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_space.png');
+spaceBase.setSize(512, 512);
+const spaceBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_space_2.png');
+spaceBase2.setSize(512, 512);
+
+const sushiBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_sushi.png');
+sushiBase.setSize(512, 512);
+const sushiBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_sushi_2.png');
+sushiBase2.setSize(512, 512);
+
+const gemsBase = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_gems.png');
+gemsBase.setSize(512, 512);
+const gemsBase2 = PIXI.BaseTexture.from(CLOUD_STORAGE_BASE + 'assets/sprite_gems_2.png');
+gemsBase2.setSize(512, 512);
+
 function extractGridTextures(baseTex: PIXI.BaseTexture): PIXI.Texture[] {
     const textures: PIXI.Texture[] = [];
     const size = 170.5;
@@ -736,6 +756,10 @@ const dessertTextures = [...extractGridTextures(dessertBase), ...extractGridText
 const oceanTextures = [...extractGridTextures(oceanBase), ...extractGridTextures(oceanBase2)];
 const carTextures = [...extractGridTextures(carBase), ...extractGridTextures(carBase2)];
 const animalTextures = [...extractGridTextures(animalBase), ...extractGridTextures(animalBase2)];
+const succulentTextures = [...extractGridTextures(succulentBase), ...extractGridTextures(succulentBase2)];
+const spaceTextures = [...extractGridTextures(spaceBase), ...extractGridTextures(spaceBase2)];
+const sushiTextures = [...extractGridTextures(sushiBase), ...extractGridTextures(sushiBase2)];
+const gemsTextures = [...extractGridTextures(gemsBase), ...extractGridTextures(gemsBase2)];
 const SHOP_ITEMS = {
     tiles: [
         { id: 'default', name: '经典奶白', price: 0, color: 0xFFFDF8, base: 0xD7CCC8 },
@@ -751,7 +775,11 @@ const SHOP_ITEMS = {
         { id: 'dessert', name: '甜点派对', price: 200, textures: dessertTextures },
         { id: 'ocean', name: '海洋世界', price: 200, textures: oceanTextures },
         { id: 'cars', name: '玩具赛车', price: 200, textures: carTextures },
-        { id: 'animals', name: '动物森林', price: 200, textures: animalTextures }
+        { id: 'animals', name: '动物森林', price: 200, textures: animalTextures },
+        { id: 'succulents', name: '治愈盆栽', price: 200, textures: succulentTextures },
+        { id: 'space', name: '宇宙星空', price: 200, textures: spaceTextures },
+        { id: 'sushi', name: '日式寿司', price: 200, textures: sushiTextures },
+        { id: 'gems', name: '闪耀宝石', price: 200, textures: gemsTextures }
     ],
     bgs: [
         { id: 'auto', name: '关卡自动轮换', price: 0 },
@@ -1100,6 +1128,7 @@ prevBtnText.anchor.set(0.5);
 prevBtn.addChild(prevBtnText);
 prevBtn.interactive = true;
 prevBtn.buttonMode = true;
+prevBtn.hitArea = new PIXI.Rectangle(-25, -25, 50, 50); // 扩大点击区域，防止点不到
 
 const nextBtn = new PIXI.Container();
 nextBtn.position.set(80, 0);
@@ -1108,6 +1137,7 @@ nextBtnText.anchor.set(0.5);
 nextBtn.addChild(nextBtnText);
 nextBtn.interactive = true;
 nextBtn.buttonMode = true;
+nextBtn.hitArea = new PIXI.Rectangle(-25, -25, 50, 50); // 扩大点击区域
 
 const dateLabelBtn = new PIXI.Container();
 const dateLabelBg = new PIXI.Graphics();
@@ -1337,6 +1367,10 @@ app.stage.on('pointerup', endDrag);
 app.stage.on('pointerupoutside', endDrag);
 
 rankContainer.addChild(globalRankListContainer);
+// 修复层级关系：将需要始终在顶层的UI重新添加到最前面（PixiJS中后添加的在最上层）
+rankContainer.addChild(dateSelectorContainer);
+rankContainer.addChild(closeRankBtn);
+rankContainer.addChild(datePickerContainer);
 
 function fetchAndRenderGlobalRank(mode: string) {
     globalRankScrollContent.removeChildren();
@@ -2566,7 +2600,7 @@ function initHomeScreen() {
             if (val && typeof wx !== 'undefined' && (wx as any).vibrateShort) (wx as any).vibrateShort({ type: 'light' });
         });
 
-        const versionText = new PIXI.Text('当前版本是v1.1.9', {
+        const versionText = new PIXI.Text('当前版本是v1.1.12', {
             fontFamily: '"PingFang SC"', fontSize: 12, fill: '#9E9E9E'
         });
         versionText.anchor.set(0.5);
@@ -2974,7 +3008,7 @@ function createShopCard(item: any, category: string, isUnlocked: boolean, isEqui
                 'star': '✨',
                 'bubble': '🫧',
                 'confetti': '🎉',
-                'heart': '❤️',
+                'heart': '💖',
                 'music': '🎵'
             };
             const previewText = new PIXI.Text(emojis[item.id] || '✨', { fontSize: 45 });
@@ -4378,7 +4412,7 @@ function playVfx(type: string, x: number, y: number) {
             container.addChild(p);
         }
     } else if (type === 'heart') {
-        const hearts = ['❤️', '💖', '💕'];
+        const hearts = ['💖', '💕', '💗'];
         for (let i = 0; i < 6; i++) {
             const p = new PIXI.Text(hearts[Math.floor(Math.random() * hearts.length)], { fontSize: 20 + Math.random() * 10 });
             p.anchor.set(0.5);
@@ -5054,7 +5088,11 @@ const basesToLoad = [
     fruitBase2, catBase2, dessertBase2,
     oceanBase, oceanBase2,
     carBase, carBase2,
-    animalBase, animalBase2
+    animalBase, animalBase2,
+    succulentBase, succulentBase2,
+    spaceBase, spaceBase2,
+    sushiBase, sushiBase2,
+    gemsBase, gemsBase2
 ];
 
 const uniqueBases = Array.from(new Set(basesToLoad));

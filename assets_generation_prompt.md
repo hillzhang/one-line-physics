@@ -30,3 +30,37 @@ python3 clean_corners.py public/assets/sprite_new.png
 ```
 
 完成这三步后，出来的就是一张带透明通道、无白边、完美融入游戏深色背景的 `sprite_new.png` 了！
+
+## 3. 更多有趣的皮肤类型灵感库 (Skin Theme Ideas)
+
+这里为你构思了多种适合这种 3D 粘土质感的“新皮肤/图标”类型，你可以直接复制使用：
+
+### 🎨 1. 魔法与炼金 (Magic & Alchemy)
+- **主题**: magic potions, spell books, crystals, and wizard hats
+- **物品清单**: purple round potion bottle, magic wand, glowing crystal, spell book, wizard hat, bubbling cauldron, magic scroll, flying broomstick, crystal ball
+- **Prompt**: `A 3x3 grid sprite sheet of cute magic potions, spell books, crystals, and wizard hats, rendered in a 3D claymation toy style... Items include: purple round potion bottle, magic wand, glowing crystal, spell book, wizard hat, bubbling cauldron, magic scroll, flying broomstick, crystal ball. ...`
+
+### 🍣 2. 日式寿司与料理 (Sushi & Japanese Cuisine)
+- **主题**: delicious cute sushi, onigiri and japanese food
+- **物品清单**: salmon nigiri, tuna nigiri, egg tamago sushi, shrimp nigiri, seaweed rice ball (onigiri), matcha teacup, tempura shrimp, salmon roe gunkan, dango skewer
+- **Prompt**: `A 3x3 grid sprite sheet of delicious cute sushi, onigiri and japanese food, rendered in a 3D claymation toy style... Items include: salmon nigiri, tuna nigiri, egg tamago sushi, shrimp nigiri, seaweed rice ball (onigiri), matcha teacup, tempura shrimp, salmon roe gunkan, dango skewer. ...`
+
+### 🪐 3. 宇宙星空 (Space & Planets)
+- **主题**: cute planets, rockets and space exploration items
+- **物品清单**: blue earth planet, saturn with rings, cute red rocket, astronaut helmet, glowing star, flying saucer UFO, moon with craters, telescope, shooting star
+- **Prompt**: `A 3x3 grid sprite sheet of cute planets, rockets and space exploration items, rendered in a 3D claymation toy style... Items include: blue earth planet, saturn with rings, cute red rocket, astronaut helmet, glowing star, flying saucer UFO, moon with craters, telescope, shooting star. ...`
+
+### 🌵 4. 多肉与治愈盆栽 (Succulents & Potted Plants)
+- **主题**: cute succulent plants, cactus and tiny potted plants
+- **物品清单**: round green cactus in a terracotta pot, pink succulent, aloe vera, hanging vine pot, tiny monstera leaf, terrarium jar, watering can, gardening trowel, blooming cactus
+- **Prompt**: `A 3x3 grid sprite sheet of cute succulent plants, cactus and tiny potted plants, rendered in a 3D claymation toy style... Items include: round green cactus in a terracotta pot, pink succulent, aloe vera, hanging vine pot, tiny monstera leaf, terrarium jar, watering can, gardening trowel, blooming cactus. ...`
+
+### 🎮 5. 复古游戏与电玩 (Retro Gaming)
+- **主题**: retro gaming consoles, arcades and 8-bit game items
+- **物品清单**: vintage gameboy, arcade cabinet, red joystick, directional d-pad, glowing pacman ghost, tetris block, golden coin, pixel heart, VR headset
+- **Prompt**: `A 3x3 grid sprite sheet of retro gaming consoles, arcades and 8-bit game items, rendered in a 3D claymation toy style... Items include: vintage gameboy, arcade cabinet, red joystick, directional d-pad, glowing pacman ghost, tetris block, golden coin, pixel heart, VR headset. ...`
+
+### 💎 6. 闪耀宝石与矿物 (Gems & Minerals)
+- **主题**: sparkling precious gems, diamonds and crystals
+- **物品清单**: brilliant cut diamond, red ruby teardrop, green emerald square, purple amethyst cluster, blue sapphire oval, gold nugget, treasure chest, pickaxe, raw quartz crystal
+- **Prompt**: `A 3x3 grid sprite sheet of sparkling precious gems, diamonds and crystals, rendered in a 3D claymation toy style... Items include: brilliant cut diamond, red ruby teardrop, green emerald square, purple amethyst cluster, blue sapphire oval, gold nugget, treasure chest, pickaxe, raw quartz crystal. ...`

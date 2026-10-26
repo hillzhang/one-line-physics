@@ -25,8 +25,8 @@ wx.onTouchMove((e) => {
     if (scrollY > 0) scrollY = 0;
     if (scrollY < -maxScrollY) scrollY = -maxScrollY;
     lastY = currentY;
-    if (cachedDataList) {
-      drawLeaderboard(cachedDataList);
+    if (cachedDataLists[currentScoreKey]) {
+      drawLeaderboard(cachedDataLists[currentScoreKey]);
     }
   }
 });
@@ -170,6 +170,8 @@ function drawLeaderboard(dataList) {
 }
 
 let cachedDataLists = {};
+let fetchTimestamps = {};
+let fetchTimer = null;
 
 wx.onMessage(data => {
   if (data.type === 'showLeaderboard') {
@@ -182,6 +184,14 @@ wx.onMessage(data => {
     let logicalWidth = sharedCanvas.width / pixelRatio;
     let logicalHeight = sharedCanvas.height / pixelRatio;
 
+    // 检查是否有有效的缓存（60秒内不再重复拉取）
+    let now = Date.now();
+    if (cachedDataLists[currentScoreKey] && fetchTimestamps[currentScoreKey] && (now - fetchTimestamps[currentScoreKey] < 60000)) {
+        scrollY = 0;
+        drawLeaderboard(cachedDataLists[currentScoreKey]);
+        return;
+    }
+
     // 强制先清理并显示正在加载
     context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
     context.save();
@@ -192,55 +202,77 @@ wx.onMessage(data => {
     context.fillText('加载中...', logicalWidth / 2, logicalHeight / 2);
     context.restore();
 
-    wx.getFriendCloudStorage({
-      keyList: [currentScoreKey],
-      success: res => {
-        let dataList = res.data || [];
-        // 过滤掉没有当前分数的记录
-        dataList = dataList.filter(item => item.KVDataList.some(kv => kv.key === currentScoreKey));
+    // 防抖：延迟300ms再发起真实请求，避免快速点击日期导致微信接口限流报错
+    if (fetchTimer) clearTimeout(fetchTimer);
+    let targetKey = currentScoreKey;
 
-        // 按分数排序
-        dataList.sort((a, b) => {
-          let scoreA = currentFormat === 'time' ? 999999 : 0;
-          let kvA = a.KVDataList.find(kv => kv.key === currentScoreKey);
-          if (kvA) scoreA = parseInt(kvA.value, 10);
+    fetchTimer = setTimeout(() => {
+        wx.getFriendCloudStorage({
+          keyList: [targetKey],
+          success: res => {
+            let dataList = res.data || [];
+            // 过滤掉没有当前分数的记录
+            dataList = dataList.filter(item => item.KVDataList.some(kv => kv.key === targetKey));
 
-          let scoreB = currentFormat === 'time' ? 999999 : 0;
-          let kvB = b.KVDataList.find(kv => kv.key === currentScoreKey);
-          if (kvB) scoreB = parseInt(kvB.value, 10);
+            // 按分数排序
+            dataList.sort((a, b) => {
+              let scoreA = currentFormat === 'time' ? 999999 : 0;
+              let kvA = a.KVDataList.find(kv => kv.key === targetKey);
+              if (kvA) scoreA = parseInt(kvA.value, 10);
 
-          return currentFormat === 'time' ? scoreA - scoreB : scoreB - scoreA;
+              let scoreB = currentFormat === 'time' ? 999999 : 0;
+              let kvB = b.KVDataList.find(kv => kv.key === targetKey);
+              if (kvB) scoreB = parseInt(kvB.value, 10);
+
+              return currentFormat === 'time' ? scoreA - scoreB : scoreB - scoreA;
+            });
+            cachedDataLists[targetKey] = dataList; // 缓存当前键的数据
+            fetchTimestamps[targetKey] = Date.now(); // 记录拉取时间
+
+            // 只有当回调回来时，当前UI仍停留在该榜单才渲染，避免异步错乱
+            if (currentScoreKey === targetKey) {
+                scrollY = 0; // 重置滚动
+                drawLeaderboard(dataList);
+            }
+          },
+          fail: err => {
+            console.error('获取好友数据失败', err);
+
+            // 如果有对应key的老缓存，则使用缓存数据进行渲染
+            if (cachedDataLists[targetKey]) {
+              console.warn('接口拉取失败，使用老缓存的排行榜数据');
+              if (currentScoreKey === targetKey) {
+                  scrollY = 0;
+                  drawLeaderboard(cachedDataLists[targetKey]);
+              }
+              return;
+            }
+
+            if (currentScoreKey !== targetKey) return;
+
+            context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+            context.save();
+            context.scale(pixelRatio, pixelRatio);
+
+            context.fillStyle = '#EF4444';
+            context.font = '16px system-ui';
+            context.textAlign = 'center';
+
+            let errStr = err.errMsg || JSON.stringify(err);
+            let displayErr = errStr.includes('frequency limit') ? '获取数据过快，请稍后再试' : '加载失败';
+            context.fillText(displayErr, logicalWidth / 2, logicalHeight / 2);
+
+            context.fillStyle = '#666666';
+            context.fillText('请检查AppID是否合法及隐私协议是否配置', logicalWidth / 2, logicalHeight / 2 + 30);
+            context.restore();
+          }
         });
-        cachedDataLists[currentScoreKey] = dataList; // 缓存当前键的数据
-        scrollY = 0; // 重置滚动
-        drawLeaderboard(dataList);
-      },
-      fail: err => {
-        console.error('获取好友数据失败', err);
-
-        // 如果有对应key的缓存，则使用缓存数据进行渲染（规避微信接口重复调用的隐私拦截Bug）
-        if (cachedDataLists[currentScoreKey]) {
-          console.warn('接口拉取失败，使用缓存的排行榜数据');
-          drawLeaderboard(cachedDataLists[currentScoreKey]);
-          return;
-        }
-        context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
-        context.save();
-        context.scale(pixelRatio, pixelRatio);
-
-        context.fillStyle = '#EF4444';
-        context.font = '16px system-ui';
-        context.textAlign = 'center';
-
-        let errorMsg = '加载失败: ' + (err.errMsg || JSON.stringify(err));
-        context.fillText(errorMsg, logicalWidth / 2, logicalHeight / 2);
-
-        context.fillStyle = '#666666';
-        context.fillText('请检查AppID是否合法及隐私协议是否配置', logicalWidth / 2, logicalHeight / 2 + 30);
-        context.restore();
-      }
-    });
-  } else if (data.type === 'hideLeaderboard' || data.type === 'clear') {
+    }, 300);
+  } else if (data.type === 'hideLeaderboard') {
     context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+  } else if (data.type === 'clear') {
+    context.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+    cachedDataLists = {}; // 清空缓存，以便下次强制拉取
+    fetchTimestamps = {};
   }
 });
